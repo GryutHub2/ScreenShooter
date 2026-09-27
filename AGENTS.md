@@ -88,6 +88,7 @@
 - 検証用の Electron スクリプトでは `app.on('window-all-closed', () => {})` を必ず入れる。入れないと1つ目のウィンドウを閉じた時点でアプリが終了し、次の `loadFile` が `ERR_FAILED` になる。
 - `npm install` で Electron 本体が落ちてこないことがある（`node_modules/electron/dist` が空）。そのときは `node node_modules\electron\install.js`。
 - 日本語を含む `.ps1` は **BOM 付き UTF-8** で保存する。Windows PowerShell 5.1 は BOM が無いと ANSI として読むため、文字列が壊れて構文エラーになる。
+- 手順書（`docs/manual.md`）の GIF を撮る・撮り直すときは `manual-shots` スキルを読む。
 
 ### 編集の道具（丸・蛍光ペン・スポット・拡大鏡）
 - IMPORTANT: 絵と図形を描くのは `paintScene()` だけ（画面・コピー・保存・サムネイル・分割保存が全部通る）。個別の所に描き方を足すと、どれか1つだけ重なり順が違う絵になる。蛍光ペンなど下の段の図形は `UNDER_TYPES` に入れる。
