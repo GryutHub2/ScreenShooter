@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+<title>スクショ — 編集</title>
+<link rel="stylesheet" href="editor.css">
+</head>
+<body>
+
+<!-- タイトルバー。Windows 標準の帯は文字を大きくできないので自作する（右端の最小化・最大化・閉じるは Windows が重ねて描く） -->
+<div id="titlebar">
+  <svg viewBox="0 0 20 20"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>
+  <span id="titleText"></span>
+</div>
+
+<div id="toolbar">
+  <div class="group" id="tools">
+    <button class="tool" data-tool="select" title="選択・移動（V）">
+      <svg viewBox="0 0 20 20"><path d="M4.5 2.5l11 5.6-4.7 1.4-1.4 4.7z" fill="currentColor" stroke="none"/></svg>
+      <span>選択</span>
+    </button>
+    <button class="tool" data-tool="hand" disabled title="つかんで動かす（H）：拡大してはみ出したときに使えます">
+      <svg viewBox="0 0 20 20"><path d="M6.6 10.4V4.6a1.2 1.2 0 0 1 2.4 0v4.8M9 9.2V3.4a1.2 1.2 0 0 1 2.4 0v5.8M11.4 9.2V4.4a1.2 1.2 0 0 1 2.4 0v5.4M13.8 9.8V6.8a1.2 1.2 0 0 1 2.4 0v5.4c0 3.2-2.2 5.6-5.4 5.6-2 0-3.2-.8-4.4-2.4L3.8 12a1.2 1.2 0 0 1 1.9-1.5l.9 1.1"/></svg>
+      <span>つかむ</span>
+    </button>
+    <button class="tool" data-tool="rect" title="四角い枠（R）">
+      <svg viewBox="0 0 20 20"><rect x="3.2" y="5.2" width="13.6" height="9.6" rx="1"/></svg>
+      <span>四角</span>
+    </button>
+    <button class="tool" data-tool="ellipse" title="丸い枠（E）：Shift を押しながらで正円">
+      <svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="7.4" ry="5.6"/></svg>
+      <span>丸</span>
+    </button>
+    <button class="tool" data-tool="arrow" title="矢印（A）">
+      <svg viewBox="0 0 20 20"><path d="M4 16L15.5 4.5M15.5 4.5H10M15.5 4.5V10"/></svg>
+      <span>矢印</span>
+    </button>
+    <button class="tool" data-tool="line" title="直線（L）">
+      <svg viewBox="0 0 20 20"><path d="M4 16L16 4"/></svg>
+      <span>直線</span>
+    </button>
+    <button class="tool" data-tool="pen" title="鉛筆・自由に描く（P）">
+      <svg viewBox="0 0 20 20"><path d="M14.2 2.6l3.2 3.2-9.7 9.7-4.2 1 1-4.2z"/><path d="M12.1 4.7l3.2 3.2"/></svg>
+      <span>鉛筆</span>
+    </button>
+    <button class="tool" data-tool="marker" title="蛍光ペン（M）：文字の上をなぞって目立たせる。Shift を押しながらで真横に引ける">
+      <svg viewBox="0 0 20 20"><path d="M12.6 2.8l3.6 3.6-5.6 5.6-3.6-3.6z"/><path d="M7 8.4l-1.6 4.2 2 2 4.2-1.6"/><path class="ink" d="M2.8 17.4h14.4"/></svg>
+      <span>蛍光ペン</span>
+    </button>
+    <button class="tool" data-tool="text" title="文字（T）">
+      <svg viewBox="0 0 20 20"><path d="M3.6 16.4L10 3.6l6.4 12.8M6.2 11.6h7.6"/></svg>
+      <span>文字</span>
+    </button>
+    <button class="tool" data-tool="step" title="連番マーカー ①②③（N）">
+      <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.4"/><path d="M8.4 8.4L10.6 6.9v6.2"/></svg>
+      <span>番号</span>
+    </button>
+    <button class="tool" data-tool="blur" title="ぼかし（B）">
+      <svg viewBox="0 0 20 20"><rect x="3.2" y="5.2" width="13.6" height="9.6" rx="1"/><path d="M3.2 8.4h13.6M3.2 11.6h13.6M6.6 5.2v9.6M10 5.2v9.6M13.4 5.2v9.6" stroke-width="1"/></svg>
+      <span>ぼかし</span>
+    </button>
+    <button class="tool" data-tool="spot" title="スポットライト（S）：囲んだ所だけ明るく残して、まわりを暗くする。何か所でも置ける">
+      <svg viewBox="0 0 20 20"><rect x="2.4" y="3.6" width="15.2" height="12.8" rx="1" class="dim"/><rect x="6.4" y="7" width="7.2" height="6" rx=".6"/></svg>
+      <span>スポット</span>
+    </button>
+    <button class="tool" data-tool="zoom" title="拡大鏡（Z）：囲んだ所を丸く拡大して横に出す。丸はドラッグで好きな所へ動かせ、丸の右下の四角で大きさ（倍率）を変えられる">
+      <svg viewBox="0 0 20 20"><circle cx="8.4" cy="8.4" r="5.4"/><path d="M12.4 12.4l5 5"/></svg>
+      <span>拡大鏡</span>
+    </button>
+    <button class="tool" data-tool="crop" title="切り抜き（C）">
+      <svg viewBox="0 0 20 20"><path d="M6.4 2v10.2a1.4 1.4 0 0 0 1.4 1.4H18M2 6.4h10.2a1.4 1.4 0 0 1 1.4 1.4V18"/></svg>
+      <span>切り抜き</span>
+    </button>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="group" id="colors">
+    <button class="sw" data-color="#e8453c" title="赤"></button>
+    <button class="sw" data-color="#f5b400" title="黄"></button>
+    <button class="sw" data-color="#2fa84f" title="緑"></button>
+    <button class="sw" data-color="#2e7dd7" title="青"></button>
+    <button class="sw" data-color="#1b1b1b" title="黒"></button>
+    <button class="sw" data-color="#ffffff" title="白"></button>
+    <label class="sw custom" title="好きな色">
+      <input type="color" id="colorPick" value="#e8453c">
+    </label>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- 太さ・文字の大きさの欄。道具を持ち替えても幅が変わらないよう、いちばん広い中身の幅を editor.js で確保する -->
+  <div class="group" id="opts">
+  <div class="group" id="widths">
+    <button class="wd" data-width="2" title="いちばん細い"><i></i></button>
+    <button class="wd" data-width="4" title="細い"><i></i></button>
+    <button class="wd" data-width="7" title="ふつう"><i></i></button>
+    <button class="wd" data-width="12" title="太い"><i></i></button>
+    <button class="wd" data-width="20" title="いちばん太い"><i></i></button>
+  </div>
+
+  <div class="group" id="markerWidths" hidden>
+    <button class="wd mk" data-width="12" title="蛍光ペン いちばん細い"><i></i></button>
+    <button class="wd mk" data-width="18" title="蛍光ペン 細い"><i></i></button>
+    <button class="wd mk" data-width="24" title="蛍光ペン ふつう"><i></i></button>
+    <button class="wd mk" data-width="32" title="蛍光ペン 太い"><i></i></button>
+    <button class="wd mk" data-width="44" title="蛍光ペン いちばん太い"><i></i></button>
+  </div>
+
+  <div class="group" id="fonts" hidden>
+    <!-- 大きさの選択肢は FONT_SIZES から作る（editor.js） -->
+    <select class="pick" id="fontSize" title="文字の大きさ"></select>
+    <select class="pick" id="fontDeco" title="文字の飾り（背景に負けないための縁取り・影）">
+      <option value="auto">おまかせ</option>
+      <option value="white">白フチ</option>
+      <option value="black">黒フチ</option>
+      <option value="shadow">影</option>
+      <option value="white-shadow">白フチ＋影</option>
+      <option value="none">飾りなし</option>
+    </select>
+    <!-- フチの太さの選択肢は HALOS から作る（editor.js） -->
+    <select class="pick" id="fontHalo" title="フチの厚み。太くすると文字のまわりが塗りつぶされる"></select>
+  </div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="group">
+    <button class="txt" id="btnUndo" title="元に戻す（Ctrl+Z）">元に戻す</button>
+    <button class="txt" id="btnRedo" title="やり直し（Ctrl+Y）">やり直し</button>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="group">
+    <button class="txt" id="btnLibrary" title="履歴パネルを開く（過去の1枚を開き直せます）">履歴</button>
+    <button class="txt" id="btnRetake" hidden
+      title="この絵と同じ範囲をもう一度撮って、新しい1枚として開きます（この絵はそのまま残ります）">同じ範囲で撮り直す</button>
+    <button class="txt" id="btnFocus"
+      title="集中モード（F）：窓の枠も道具も消して絵だけにします。カーソルを窓の外へ出すと道具も消えます">集中</button>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="group">
+    <button class="txt primary" id="btnCopy" title="クリップボードにコピー（Ctrl+C）">コピー</button>
+    <button class="txt primary" id="btnSave" title="書き込みがあれば「_書き込み.png」として書き出して閉じます（Ctrl+S）">保存して閉じる</button>
+    <button class="txt" id="btnSaveAs" title="名前を付けて保存（Ctrl+Alt+S）">名前を付けて…</button>
+    <button class="txt" id="btnSplit" hidden
+      title="縦に長い画像を何枚かに分けて保存します。Google ドキュメントなどに貼るとき用">分割保存</button>
+  </div>
+</div>
+
+<div id="canvasWrap">
+  <canvas id="cv"></canvas>
+  <textarea id="textEdit" wrap="off" spellcheck="false" hidden></textarea>
+</div>
+
+<div id="statusbar">
+  <span id="stSize"></span>
+  <button class="mini" id="btnResize"
+    title="絵の大きさを変えます（％・幅・高さで指定）。何度変えても撮ったときの絵から作り直すので、画質は落ち重なりません">サイズ</button>
+  <span class="dot">・</span>
+  <span id="stTip"></span>
+  <span class="spacer"></span>
+  <!-- 個人情報・APIキーを探してぼかす（撮った直後は自動で走る）。ツールバーの段を増やさないよう下の帯に置く -->
+  <button class="mini" id="btnAutoBlur"
+    title="写っている文字を読んで、メールアドレス・電話番号・カード番号・APIキー・このパソコンのユーザー名・設定に登録した言葉にぼかしを置きます。ぼかしはふつうの図形なので、動かす・消すができます。見落としはあるので、必ず自分の目でも確認してください">自動ぼかし</button>
+  <!-- 画面に浮かせる。ツールバーの段を増やさないよう下の帯に置く -->
+  <button class="mini" id="btnPin"
+    title="いま見えている絵（書き込み・切り抜き込み）を、いつも手前に浮かぶ小さな窓にして画面に置きます。ドラッグで移動、ホイールか縁のドラッグで大きさ、Ctrl+ホイールで濃さ、ダブルクリックか Esc で閉じます">浮かせる</button>
+  <span class="bar"></span>
+  <!-- コピー・保存の仕上げ。ツールバーの段を増やさないよう下の帯に置く。選択肢は FINISHES から作る（editor.js） -->
+  <div class="group" id="finishBox">
+    <select class="pick" id="finish"
+      title="コピー・保存するときの仕上げ。影つき・背景つきは、まわりに余白を足して角を丸め、影を落とします（元の絵はそのまま）"></select>
+    <button class="mini" id="btnFinishView" hidden title="仕上げを付けたときの見え方を確かめる">見る</button>
+  </div>
+  <span class="bar"></span>
+  <!-- 書き方のお気に入り。ツールバーの段を増やさないよう下の帯に置く。中身（色・道具の絵・説明）は editor.js が作る -->
+  <div class="group" id="favs">
+    <span class="favLabel">お気に入り</span>
+    <button class="fav" data-fav="0"></button>
+    <button class="fav" data-fav="1"></button>
+    <button class="fav" data-fav="2"></button>
+    <button class="fav" data-fav="3"></button>
+  </div>
+  <span class="bar"></span>
+  <!-- 集中モードで折り返すとき、拡大・縮小がばらばらの行に分かれないよう1つにまとめる -->
+  <div id="zoomBox">
+    <button class="mini" id="btnZoomOut" title="縮小">−</button>
+    <button class="mini" id="btnZoomFit" title="全体を表示">全体</button>
+    <button class="mini" id="btnZoom100" title="実寸（Ctrl+0）">100%</button>
+    <button class="mini" id="btnZoomIn" title="拡大">＋</button>
+    <span id="stZoom"></span>
+  </div>
+</div>
+
+<!-- 仕上げの見え方。書き出す絵そのもの（canvas）を白いページの上に出す -->
+<div id="finishPreview" hidden>
+  <div id="finishPreviewBox"></div>
+  <div id="finishPreviewCap"></div>
+</div>
+
+<!-- 自動ぼかしを置いたときのお知らせ。見落としを確かめてもらうため、閉じるまで出しておく -->
+<div id="privNotice" hidden><span id="privNoticeMsg"></span><button id="privNoticeClose" title="このお知らせを閉じる">閉じる</button></div>
+
+<div id="toast" hidden><span id="toastMsg"></span><button id="toastAction" hidden>フォルダを開く</button></div>
+
+<!-- 絵の大きさを変える。縦横の比はいつも保つ（比を崩す指定は文字がゆがむだけなので置かない） -->
+<div id="resizeDlg" hidden>
+  <div id="rzBox">
+    <div id="rzTitle">画像の大きさを変える</div>
+    <div class="rzNowRow">いまの大きさ：<span id="rzNow"></span></div>
+    <label class="rzRow">
+      <input type="radio" name="rzMode" value="pct"><span class="rzName">割合</span>
+      <input type="number" id="rzPct" min="2" max="800" step="1"><span class="rzUnit">%</span>
+      <span class="rzOut" id="rzPctOut"></span>
+    </label>
+    <div class="rzChips">
+      <button class="rzChip" data-pct="25">25%</button>
+      <button class="rzChip" data-pct="50">50%</button>
+      <button class="rzChip" data-pct="67">67%</button>
+      <button class="rzChip" data-pct="75">75%</button>
+      <button class="rzChip" data-pct="100">100%</button>
+      <button class="rzChip" data-pct="200">200%</button>
+    </div>
+    <label class="rzRow">
+      <input type="radio" name="rzMode" value="width"><span class="rzName">幅</span>
+      <input type="number" id="rzWidth" min="1" step="1"><span class="rzOut" id="rzWidthOut"></span>
+    </label>
+    <label class="rzRow">
+      <input type="radio" name="rzMode" value="height"><span class="rzName">高さ</span>
+      <input type="number" id="rzHeight" min="1" step="1"><span class="rzOut" id="rzHeightOut"></span>
+    </label>
+    <div id="rzResult"></div>
+    <div id="rzHint"></div>
+    <div class="rzNote">％は撮ったときの大きさに対する割合です。縦横の比はそのまま保ちます。
+      何度変えても撮ったときの絵から作り直すので、画質は落ち重なりません（100% に戻せば元どおり）。
+      コピー・保存は PNG（保存しても画質が落ちない形式）で出ます。</div>
+    <div class="rzBtns">
+      <button class="txt" id="rzReset">撮ったときの大きさに戻す</button>
+      <span class="spacer"></span>
+      <button class="txt" id="rzCancel">やめる</button>
+      <button class="txt primary" id="rzOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="resample.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>

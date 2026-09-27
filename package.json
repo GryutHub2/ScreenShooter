@@ -1,0 +1,15 @@
+{
+  "name": "sukusho",
+  "productName": "スクショ",
+  "version": "1.0.0",
+  "description": "範囲を選んで撮り、その場で赤枠・矢印・赤文字を書き込めるスクリーンショットツール",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "icons": "node tools/make-icons.js"
+  },
+  "devDependencies": {
+    "electron": "43.3.0"
+  }
+}

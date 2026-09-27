@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+<title>スクショ — 設定</title>
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+
+<h1>設定</h1>
+
+<section>
+  <h2>ショートカットキー</h2>
+  <p class="note">欄をクリックしてから、割り当てたいキーを押してください（例：Ctrl+F12）。</p>
+
+  <div class="row">
+    <label for="keyRegion">範囲を選んで撮る</label>
+    <button class="keyfield" id="keyRegion"></button>
+    <button class="mini" id="clearRegion" title="割り当てを消す">消す</button>
+  </div>
+
+  <div class="row">
+    <label for="keyRepeat">同じ範囲でもう一度</label>
+    <button class="keyfield" id="keyRepeat"></button>
+    <button class="mini" id="clearRepeat" title="割り当てを消す">消す</button>
+  </div>
+
+  <div class="row">
+    <label for="keyFull">画面全体を撮る</label>
+    <button class="keyfield" id="keyFull"></button>
+    <button class="mini" id="clearFull" title="割り当てを消す">消す</button>
+  </div>
+
+  <div class="row">
+    <label for="keyScroll">スクロールして撮る</label>
+    <button class="keyfield" id="keyScroll"></button>
+    <button class="mini" id="clearScroll" title="割り当てを消す">消す</button>
+  </div>
+
+  <div class="row">
+    <label for="keyRecord">録画する</label>
+    <button class="keyfield" id="keyRecord"></button>
+    <button class="mini" id="clearRecord" title="割り当てを消す">消す</button>
+  </div>
+
+  <p class="warn" id="warn" hidden></p>
+</section>
+
+<section>
+  <h2>保存先フォルダ</h2>
+  <div class="row">
+    <input type="text" id="saveDir" readonly>
+    <button class="mini" id="pickDir">変更…</button>
+    <button class="mini" id="openDir">開く</button>
+  </div>
+  <p class="note">編集画面の「保存」を押したとき、ここに PNG で入ります。</p>
+</section>
+
+<section>
+  <h2>撮り方</h2>
+  <label class="check"><input type="checkbox" id="snapWindows"> カーソルの下のウィンドウに枠を吸い付かせる</label>
+  <p class="note">範囲選択のときに、マウスを乗せた窓や、その中の部品（メニューバーなど）に青い枠が付きます。
+    そのまま<b>クリック</b>すればその範囲を撮れます（<b>ホイール</b>で範囲を広げたり狭めたり）。
+    ドラッグすればこれまで通り自由に選べます。</p>
+</section>
+
+<section>
+  <h2>自動ぼかし</h2>
+  <label class="check"><input type="checkbox" id="autoBlur"> 撮影後に個人情報を自動でぼかす</label>
+  <p class="note">撮ると裏で写っている文字を読み、メールアドレス・電話番号・カード番号・APIキー・このパソコンのユーザー名、
+    下に登録した言葉に<b>ぼかしを置きます</b>。ふつうのぼかしなので動かす・消すができます。
+    読み取りはこのパソコンの中だけで行い、外へは送りません。<b>見落としはあるので、必ず自分の目でも確認してください。</b>録画には効きません。</p>
+  <div class="row rowtop">
+    <label for="autoBlurLevel">ぼかしの強さ</label>
+    <select class="pick" id="autoBlurLevel">
+      <option value="low">弱（決まった形だけ）</option>
+      <option value="normal">標準</option>
+      <option value="high">強（数字の並びも）</option>
+    </select>
+  </div>
+  <ul class="note levels">
+    <li><b>弱</b>：登録した言葉、メールアドレス（taro@example.com）、APIキー（sk-…・ghp_… など決まった形）、
+      カード番号（4111 1111 1111 1111）、このパソコンのユーザー名</li>
+    <li><b>標準</b>：弱に加えて、電話番号（090-1234-5678）、「パスワード」「会員番号」などの見出しの後ろの値、
+      長いランダムな英数字（aB3xK9…のようなトークン）</li>
+    <li><b>強</b>：標準に加えて、<b>8桁以上の数字の並び</b>（注文番号 12345678 など）。桁の多い金額や番号も隠れることがあります</li>
+  </ul>
+  <div class="row rowtop">
+    <label for="autoBlurWords">自動でぼかす言葉</label>
+    <textarea id="autoBlurWords" rows="5" spellcheck="false" placeholder="1行に1つ。Enter で改行して並べる（例：自分の名前、会社名、/PA\d{9}/）"></textarea>
+  </div>
+  <p class="note"><b>1行に1つ</b>ずつ、Enter で改行して並べます（カンマや空白では区切りません）。
+    前後を <b>/</b> で囲んだ行は<b>文字の形</b>（正規表現）で探します。
+    <code>/PA\d{9}/</code> … PA のあとに数字9桁　<code>/IL\d{10}/</code> … IL のあとに数字10桁
+    （<code>\d</code> は数字1文字、<code>{9}</code> は9回。<code>\</code> は <code>¥</code> で打っても同じ）。
+    桁数は<b>ちょうど</b>で数えます（<code>/PA\d{9}/</code> は PA1234567890 のような10桁には当たりません）。</p>
+  <p class="warn" id="autoBlurBad" hidden></p>
+</section>
+
+<section>
+  <h2>録画（GIF・動画）</h2>
+  <div class="row">
+    <label for="recFps">動画のなめらかさ</label>
+    <select class="pick" id="recFps">
+      <option value="10">10 コマ/秒（軽い）</option>
+      <option value="15">15 コマ/秒</option>
+      <option value="24">24 コマ/秒</option>
+      <option value="30">30 コマ/秒（なめらか）</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="gifFps">GIF のなめらかさ</label>
+    <select class="pick" id="gifFps">
+      <option value="5">5 コマ/秒（軽い）</option>
+      <option value="10">10 コマ/秒</option>
+      <option value="15">15 コマ/秒（重い）</option>
+    </select>
+  </div>
+  <label class="check"><input type="checkbox" id="recAudio"> パソコンで鳴っている音も一緒に録る</label>
+  <div class="row rowtop">
+    <label for="gifWidth">GIF の横幅の上限</label>
+    <select class="pick" id="gifWidth">
+      <option value="0">縮めない（いちばん綺麗）</option>
+      <option value="480">480 px</option>
+      <option value="640">640 px</option>
+      <option value="800">800 px</option>
+      <option value="1000">1000 px</option>
+    </select>
+  </div>
+  <p class="note">録ると<b>動画（MP4）と GIF が両方</b>でき、止めたあとにどちらで保存するか選べます。
+    GIF は色が 256 色までなので、大きく・なめらかにするほどファイルが重くなります。
+    <b>横幅を縮めると文字がぼやけます</b>。ファイルが重すぎるときだけ小さくしてください。長さの上限は 10 分です。</p>
+</section>
+
+<section>
+  <h2>履歴パネル</h2>
+  <div class="row rowtop">
+    <label for="libThumb">サムネイルの大きさ</label>
+    <input type="range" id="libThumb" class="slider" min="64" max="240" step="8">
+    <span class="note nomargin" id="libThumbVal">104 px</span>
+  </div>
+
+  <div class="row">
+    <label for="libLimit">残しておく枚数</label>
+    <input type="number" id="libLimit" class="num" min="10" max="5000" step="10">
+    <span class="note nomargin">枚を超えたら古いものから消えます</span>
+  </div>
+  <p class="note">履歴には「書き込む前の元画像」と「赤枠・矢印などの位置」が入ります。だから
+    あとから開き直して、線を動かしたり色を変えたりできます。</p>
+</section>
+
+<section>
+  <h2>ほかの画像を開く</h2>
+  <label class="check"><input type="checkbox" id="sendToMenu"> 右クリックの「送る」に「スクショで開く」を出す</label>
+  <p class="note">画像を右クリック →「その他のオプションを表示」→「送る」→「スクショで開く」で、その絵をこのアプリで開けます。
+  履歴パネルに画像をドラッグして落としても同じです。どちらも保存先フォルダにコピーしてから開くので、元のファイルはそのまま残ります。</p>
+</section>
+
+<div class="footer">
+  <span id="status"></span>
+  <span class="spacer"></span>
+  <button class="mini" id="btnClose">閉じる</button>
+  <button class="mini primary" id="btnSave">保存する</button>
+</div>
+
+<script src="settings.js"></script>
+</body>
+</html>

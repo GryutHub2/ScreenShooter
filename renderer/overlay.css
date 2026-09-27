@@ -1,0 +1,109 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #101010;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+}
+
+#shot {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* 選択が始まるまでの全面の暗幕 */
+#dim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+/* 選択中は #sel の外側だけを暗くする（巨大な box-shadow で穴あき暗幕を作る） */
+#sel {
+  position: fixed;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  outline: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+/* カーソルの下にあるウィンドウ（や、その中の部品）に吸い付く枠。
+   #sel と同じく巨大な box-shadow で外側を暗くする */
+#snap {
+  position: fixed;
+  border: 2px solid #4a8ef0;
+  background: rgba(74, 142, 240, 0.12);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+#guideV, #guideH {
+  position: fixed;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+#guideV { top: 0; bottom: 0; width: 1px; }
+#guideH { left: 0; right: 0; height: 1px; }
+
+#selSize {
+  position: fixed;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(20, 20, 20, 0.88);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#loupe {
+  position: fixed;
+  left: -400px;
+  top: -400px;
+  width: 132px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(20, 20, 20, 0.92);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+#loupeCv { display: block; image-rendering: pixelated; }
+#loupeInfo {
+  padding: 3px 6px;
+  color: #e6e6e6;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+#hint, #hintScroll, #hintRecord {
+  position: fixed;
+  left: 50%;
+  top: 28px;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.86);
+  color: #f0f0f0;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+#hint b, #hintScroll b, #hintRecord b { color: #ffd166; font-weight: 600; }
+#hintScroll { background: rgba(30, 58, 95, 0.92); }
+#hintRecord { background: rgba(94, 30, 30, 0.92); }
+
+[hidden] { display: none !important; }

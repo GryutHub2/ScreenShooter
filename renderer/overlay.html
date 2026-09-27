@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+<title>範囲を選ぶ</title>
+<link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+  <img id="shot" alt="">
+  <div id="dim"></div>
+  <div id="guideV"></div>
+  <div id="guideH"></div>
+  <div id="snap" hidden></div>
+  <div id="sel" hidden></div>
+  <div id="selSize" hidden></div>
+  <div id="loupe">
+    <canvas id="loupeCv" width="132" height="132"></canvas>
+    <div id="loupeInfo"></div>
+  </div>
+  <div id="hint"><span id="hintSnap" hidden><b>クリック</b>で青い枠を撮る　／　<b>ホイール</b>で範囲を変える　／　</span>ドラッグで自由に選ぶ　／　<b>Space</b> で画面全体　／　<b>Esc</b> でやめる</div>
+  <div id="hintScroll" hidden><b>スクロールして撮る範囲</b>を選ぶ　／　中身がスクロールする所（ページ本体）を選んでください　／　<b>Esc</b> でやめる</div>
+  <div id="hintRecord" hidden><b>録画する範囲</b>を選ぶ　／　選ぶとすぐ録り始めます　／　止めると<b>GIF と動画</b>のどちらでも保存できます　／　<b>Esc</b> でやめる</div>
+  <script src="overlay.js"></script>
+</body>
+</html>

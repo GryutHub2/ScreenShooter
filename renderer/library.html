@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: file:; style-src 'self'; script-src 'self'">
+<title>スクショ — 履歴パネル</title>
+<link rel="stylesheet" href="library.css">
+</head>
+<body>
+
+<div id="bar">
+  <span id="title">履歴パネル</span>
+  <span id="hint" title="ダブルクリックで開く／Ctrl+C でコピー／Ctrl+クリックで複数えらぶ／ドラッグでまとめて渡す／画像を落とすと取り込む">ダブルクリックで開く／Ctrl+C でコピー／Ctrl+クリックで複数えらぶ／ドラッグでまとめて渡す／画像を落とすと取り込む</span>
+  <span class="spacer"></span>
+  <span id="count" hidden></span>
+  <button id="btnPin" title="ピン留め（出しっぱなしにする）">
+    <svg viewBox="0 0 20 20"><path d="M12.5 2.5l5 5-2.2.6-3.4 3.4-.4 3.6-5.6-5.6 3.6-.4L12.9 5.7zM7 13L3 17"/></svg>
+  </button>
+</div>
+
+<div id="strip">
+  <p id="empty">まだ1枚もありません。<b>Ctrl+Shift+S</b> で撮ると、ここに並びます。</p>
+</div>
+
+<div id="dropHint" hidden>ここに落とすと、この絵を取り込んで開きます</div>
+
+<div id="toast" hidden></div>
+
+<div id="dock">
+  <button class="dk" id="dkRegion" title="範囲を選んで撮る">
+    <span class="ring">
+      <svg viewBox="0 0 24 24"><path d="M3 7.5h4L8.5 5.5h7L17 7.5h4v11H3z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
+    </span>
+    <span class="lab">撮る</span>
+  </button>
+
+  <button class="dk" id="dkRepeat" title="前回と同じ範囲をもう一度撮る（まだ範囲で撮っていないときは、範囲を選ぶ画面になります）">
+    <span class="ring">
+      <svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><path d="M15.5 10a3.8 3.8 0 1 0 .3 3.2"/><path d="M15.8 7.6v2.6h-2.6"/></svg>
+    </span>
+    <span class="lab">同じ範囲</span>
+  </button>
+
+  <button class="dk" id="dkScroll" title="スクロールして長いページを撮る">
+    <span class="ring">
+      <svg viewBox="0 0 24 24"><path d="M6.5 3.5h11v10h-11z"/><path d="M12 15.5v5M12 20.5l-2.5-2.5M12 20.5l2.5-2.5"/></svg>
+    </span>
+    <span class="lab">長いページ</span>
+  </button>
+
+  <button class="dk" id="dkRecord" title="範囲を選んで録画する（GIF・動画）">
+    <span class="ring">
+      <svg viewBox="0 0 24 24"><path d="M3.5 7h11v10h-11z"/><path d="M14.5 11l6-3v8l-6-3z"/></svg>
+    </span>
+    <span class="lab">録画</span>
+  </button>
+
+  <button class="dk" id="dkOpen" title="選んだものを開く" disabled>
+    <span class="ring">
+      <svg viewBox="0 0 24 24" class="icEdit"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14.5 5.5l4 4"/></svg>
+      <svg viewBox="0 0 24 24" class="icPlay" hidden><circle cx="12" cy="12" r="8.5"/><path d="M10 8.5l6 3.5-6 3.5z"/></svg>
+    </span>
+    <span class="lab">編集</span>
+  </button>
+
+  <button class="dk" id="dkFolder" title="保存フォルダを開く">
+    <span class="ring">
+      <svg viewBox="0 0 24 24"><path d="M3 19V5h6l2 2.5h10V19z"/></svg>
+    </span>
+    <span class="lab">フォルダ</span>
+  </button>
+
+  <button class="dk" id="dkSettings" title="設定を開く">
+    <span class="ring">
+      <svg viewBox="0 0 24 24"><path d="M3.5 8h9M17 8h3.5M3.5 16h3.5M12 16h8.5"/><circle cx="14.7" cy="8" r="2.3"/><circle cx="9.3" cy="16" r="2.3"/></svg>
+    </span>
+    <span class="lab">設定</span>
+  </button>
+
+  <span class="gap"></span>
+
+  <button class="dk big" id="dkClose" title="閉じる">
+    <span class="ring">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </span>
+    <span class="lab">閉じる</span>
+  </button>
+</div>
+
+<script src="library.js"></script>
+</body>
+</html>

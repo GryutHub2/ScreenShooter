@@ -1,0 +1,506 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #23262b;
+  --panel: #2c3037;
+  --panel2: #343941;
+  --line: #3d434c;
+  --fg: #e8eaed;
+  --fg-dim: #a6acb6;
+  --accent: #4a8ef0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  font-size: 15px;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------------------------------------------------- タイトルバー */
+
+/* Windows 標準の帯の代わり。高さは main.js の EDITOR_TITLE_H と合わせる。
+   右端 150px は Windows が重ねて描く最小化・最大化・閉じるのボタン（3つで 138px）に空けておく */
+#titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 150px 0 12px;
+  background: #1f2227;
+  color: var(--fg);
+  font-size: 16px;
+  -webkit-app-region: drag;
+}
+#titlebar svg {
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  fill: none;
+  stroke: #e8453c;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#titleText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.focus #titlebar { display: none; }
+
+/* ---------------------------------------------------------- ツールバー */
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.group { display: flex; align-items: center; gap: 3px; }
+.sep { width: 1px; height: 26px; background: var(--line); margin: 0 4px; }
+.spacer { flex: 1 1 auto; }
+
+button {
+  font: inherit;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+button:hover { background: var(--panel2); }
+button:disabled { opacity: .38; cursor: default; }
+button:disabled:hover { background: transparent; }
+
+.tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  /* 文字を履歴パネル並みにした幅。広げると段が増えて絵が下へずれるので、main.js の CHROME と合わせて変える */
+  width: 56px;
+  padding: 4px 0 3px;
+  line-height: 1;
+}
+.tool svg {
+  width: 22px; height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tool svg .ink { stroke-width: 3; opacity: .5; }
+.tool svg .dim { fill: currentColor; fill-opacity: .35; stroke: none; }
+.tool span { font-size: 13px; color: var(--fg-dim); white-space: nowrap; }
+.tool.on { background: var(--accent); border-color: var(--accent); }
+.tool.on span { color: #fff; }
+
+/* 色は CSS 側で持つ。HTML の style="" は Content-Security-Policy で無効になるため */
+.sw[data-color="#e8453c"] { --c: #e8453c; }
+.sw[data-color="#f5b400"] { --c: #f5b400; }
+.sw[data-color="#2fa84f"] { --c: #2fa84f; }
+.sw[data-color="#2e7dd7"] { --c: #2e7dd7; }
+.sw[data-color="#1b1b1b"] { --c: #1b1b1b; }
+.sw[data-color="#ffffff"] { --c: #ffffff; }
+
+.sw {
+  width: 25px; height: 25px;
+  border-radius: 50%;
+  background: var(--c);
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.35);
+  position: relative;
+}
+.sw:hover { background: var(--c); }
+.sw.on { border-color: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,.35), 0 0 0 1px var(--accent); }
+.sw.custom {
+  overflow: hidden;
+  background: conic-gradient(#e8453c, #f5b400, #2fa84f, #2e7dd7, #a24ede, #e8453c);
+  display: inline-block;
+  cursor: pointer;
+}
+.sw.custom input { opacity: 0; width: 100%; height: 100%; cursor: pointer; border: 0; }
+
+.wd {
+  width: 34px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+}
+/* 見本の高さは実際の太さと比例させるが、ボタンに収まるよう太い側は少し詰める */
+.wd i { display: block; width: 16px; background: var(--fg); border-radius: 4px; }
+.wd[data-width="2"] i { height: 2px; }
+.wd[data-width="4"] i { height: 4px; }
+.wd[data-width="7"] i { height: 7px; }
+.wd[data-width="12"] i { height: 11px; }
+.wd[data-width="20"] i { height: 16px; }
+/* 蛍光ペンの太さ。角の立った半透明の帯にして、ふつうの太さと見分けられるようにする */
+.wd.mk i { width: 18px; border-radius: 1px; opacity: .7; }
+.wd.mk[data-width="12"] i { height: 6px; }
+.wd.mk[data-width="18"] i { height: 9px; }
+.wd.mk[data-width="24"] i { height: 12px; }
+.wd.mk[data-width="32"] i { height: 15px; }
+.wd.mk[data-width="44"] i { height: 19px; }
+.wd.on { background: var(--accent); }
+.wd.on i { background: #fff; }
+
+#opts { gap: 3px; }
+
+/* 文字の大きさ・飾りのプルダウン。まわりのボタンと同じ見た目にそろえる */
+.pick {
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  height: 30px;
+  padding: 0 5px;
+  cursor: pointer;
+}
+.pick:hover { border-color: var(--accent); }
+.pick:focus { outline: 1px solid var(--accent); }
+
+.txt { height: 32px; padding: 0 12px; border-color: var(--line); }
+.txt.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.txt.primary:hover { background: #5c9bf3; }
+
+/* ---------------------------------------------------------- 画像 */
+
+#canvasWrap {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: auto;
+  display: flex;
+  padding: 20px;
+  background:
+    linear-gradient(45deg, #1e2126 25%, transparent 25%, transparent 75%, #1e2126 75%),
+    linear-gradient(45deg, #1e2126 25%, #262a30 25%, #262a30 75%, #1e2126 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+}
+
+/* margin:auto で中央寄せする。flex の中央寄せだと、画像がはみ出したとき
+   上と左が切れてスクロールしても見えなくなる */
+#cv {
+  display: block;
+  margin: auto;
+  box-shadow: 0 3px 18px rgba(0, 0, 0, .55);
+  cursor: crosshair;
+  flex: 0 0 auto;
+}
+#cv.select { cursor: default; }
+#canvasWrap.hand, #canvasWrap.hand #cv { cursor: grab; }
+#canvasWrap.panning, #canvasWrap.panning #cv { cursor: grabbing; }
+
+#textEdit {
+  position: absolute;
+  margin: 0;
+  padding: 0 2px;
+  border: 1px dashed rgba(255, 255, 255, .85);
+  outline: 1px dashed rgba(0, 0, 0, .55);
+  background: rgba(255, 255, 255, .1);
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  font-weight: 600;
+  caret-color: #fff;
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* ドラッグで枠を取って置く文字。枠の幅で折り返し、はみ出した行は欄の中でスクロールする（バーは出さない）。
+   余白と縁を 0 にして、canvas で描く字と同じ幅・同じ位置で折れるようにしている */
+#textEdit.box {
+  padding: 0;
+  border: 0;
+  outline: 1px dashed rgba(0, 0, 0, .55);
+  background: #fff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+  overflow-y: auto;
+  caret-color: auto;
+}
+#textEdit.box.dark { background: #2a2a2a; outline-color: rgba(255, 255, 255, .6); }
+#textEdit.box::-webkit-scrollbar { display: none; }
+
+/* ---------------------------------------------------------- 下の帯 */
+
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+#statusbar .dot { opacity: .5; flex: 0 0 auto; }
+/* まとまりの区切りは細い線にする。全角の「｜」は1つで約 24px（前後の間隔込み）使い、いちばん狭い窓で帯が1行に収まらない */
+#statusbar .bar { flex: 0 0 auto; width: 1px; height: 22px; margin: 0 2px; background: var(--line); }
+/* 狭いときに縮めてよいのは案内（stTip）だけ。サイズ表示は案内を縮めきるまで縮めない（上限だけ付けて「…」） */
+#stSize { flex: 0 0 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* お気に入りを置いたぶん帯が狭くなるので、長い案内は1行のまま末尾を「…」で切る（2行になると帯からはみ出す） */
+#stTip { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 書き方のお気に入り。色は editor.js が --c に入れる（HTML の style="" は CSP で無効なので、JS から CSS 変数で渡す） */
+#favs { gap: 3px; flex: 0 0 auto; }
+.favLabel { font-size: 16px; margin-right: 2px; white-space: nowrap; }
+.fav {
+  display: flex; align-items: center; gap: 2px;
+  height: 32px; padding: 0 6px 0 5px;
+  border-color: var(--line);
+  color: var(--c, var(--fg));
+}
+.fav b { font-size: 15px; font-weight: 600; color: var(--fg-dim); }
+.fav svg {
+  width: 21px; height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fav svg .ink { stroke-width: 3; opacity: .5; }
+.fav svg .dim { fill: currentColor; fill-opacity: .35; stroke: none; }
+/* 白フチの文字は、絵にも白いフチを付けて見分けられるようにする */
+.fav.halo svg { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
+/* 黒など暗い色は帯の地に沈むので、明るい地にする */
+.fav.dark, .fav.dark:hover { background: #cfd3d9; }
+.fav.dark b { color: #333; }
+.fav.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+/* 拡大・縮小のボタンと倍率は縮めない。flex の既定（縮む）のままだと、長い案内に押されて「全体」が2行に折れ帯からはみ出す */
+.mini { flex: 0 0 auto; white-space: nowrap; height: 32px; min-width: 32px; padding: 0 9px; border-color: var(--line); font-size: 16px; }
+#stZoom { flex: 0 0 auto; white-space: nowrap; min-width: 58px; text-align: right; }
+/* 帯と同じ間隔で並べる（まとめても通常の見た目は変えない） */
+#zoomBox { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+/* 仕上げのプルダウン。帯の高さ（44px）に収まるよう、ツールバーのものより低くする */
+#finishBox { gap: 4px; flex: 0 0 auto; }
+#finish { height: 32px; font-size: 16px; }
+
+/* 仕上げの見え方。白いページに貼ったつもりで、書き出す絵を窓いっぱいに縮めて出す */
+#finishPreview {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px 24px 12px;
+  background: #ffffff;
+  cursor: pointer;
+}
+/* 絵は枠に絶対配置で置く。grid の行（auto）に入れると行の高さが絵で決まり、max-height: 100% が効かず縦長の絵がはみ出す */
+#finishPreviewBox { flex: 1 1 auto; min-height: 0; position: relative; }
+#finishPreviewBox canvas { position: absolute; inset: 0; margin: auto; display: block; max-width: 100%; max-height: 100%; }
+#finishPreviewCap { flex: 0 0 auto; text-align: center; color: #555; font-size: 12px; }
+body.focus #finishPreview { padding: 10px 10px 6px; -webkit-app-region: no-drag; }
+
+/* 大きさを変えてあるときは「サイズ変更」を青く縁取る（気づかずに縮めたまま出さないように） */
+#btnResize.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: #fff; }
+
+/* ---------------------------------------------------------- 大きさを変えるダイアログ */
+
+#resizeDlg {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .45);
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+#rzBox {
+  width: 520px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding: 18px 20px 16px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .6);
+  font-size: 16px;
+}
+#rzTitle { font-size: 18px; font-weight: 600; margin-bottom: 10px; }
+.rzNowRow { color: var(--fg-dim); margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+.rzRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.rzRow input[type="radio"] { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
+.rzName { width: 44px; }
+.rzRow input[type="number"] {
+  width: 104px;
+  height: 32px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  user-select: text;
+}
+.rzRow input[type="number"]:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.rzUnit, .rzOut { color: var(--fg-dim); white-space: nowrap; }
+.rzChips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 6px 69px; }
+.rzChip { height: 28px; padding: 0 9px; border-color: var(--line); font-size: 14px; }
+#rzResult { margin-top: 12px; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+#rzResult.err { color: #ff8a80; }
+#rzHint { min-height: 22px; margin-top: 4px; color: #ffd27a; font-size: 14.5px; line-height: 1.5; }
+.rzNote { margin-top: 10px; color: var(--fg-dim); font-size: 13.5px; line-height: 1.6; }
+.rzBtns { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+
+/* ---------------------------------------------------------- お知らせ */
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 52px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 88vw;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: rgba(18, 20, 24, .95);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+  font-size: 14.5px;
+  /* 低い窓では赤枠のお知らせ（#privNotice, 15）と同じ高さに来るので、短いお知らせを上に出す */
+  z-index: 16;
+}
+#toastMsg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#toastAction { height: 28px; padding: 0 10px; border-color: var(--line); font-size: 14px; flex: 0 0 auto; }
+
+/* 自動ぼかしのお知らせ。見落としを自分の目で確かめてもらうため、赤枠で目立たせ、閉じるまで消さない。
+   下の帯のお知らせ（#toast）と重ならないよう、その上に出す */
+#privNotice {
+  --pn-bottom: 98px;
+  position: fixed;
+  left: 50%;
+  bottom: var(--pn-bottom);
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 92vw;
+  padding: 11px 12px 11px 16px;
+  border-radius: 8px;
+  background: #2b1512;
+  border: 2px solid #e8453c;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .55);
+  color: #ffe4e0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+/* 下端を固定して上へ伸びるので、狭い窓（集中モードは幅140pxまで縮む）では文が縦に伸びて窓の上へはみ出す。
+   文の高さに上限を付けてその中だけスクロールさせ、「閉じる」は常に窓の中に残す。
+   34px は上下の余白 22px＋枠 4px＋窓の上端とのすき間 8px */
+#privNoticeMsg { min-width: 0; max-height: calc(100vh - var(--pn-bottom) - 34px); overflow-y: auto; }
+/* 低い窓は下の帯の上に逃がす余裕がないので、下端まで下げる（ふつうの窓は最小の高さ 480px なのでここに来ない） */
+@media (max-height: 360px) {
+  #privNotice { --pn-bottom: 8px; }
+}
+/* 細い窓で横に並べると、文が1行4〜5文字まで削られる（left: 50% の要素は幅が窓の半分までしか伸びない）。
+   幅を窓いっぱいに取り、「閉じる」は文の下に回す。68px は上下の余白 20px＋枠 4px＋すき間 8px＋ボタン 28px＋窓の上端とのすき間 8px */
+@media (max-width: 420px) {
+  #privNotice { width: 92vw; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px; font-size: 13.5px; line-height: 1.5; }
+  #privNoticeClose { align-self: flex-end; }
+  #privNoticeMsg { max-height: calc(100vh - var(--pn-bottom) - 68px); }
+}
+#privNoticeClose { flex: 0 0 auto; height: 28px; padding: 0 12px; border-color: #e8453c; font-weight: 600; }
+#privNoticeClose:hover { background: #4a211c; }
+body.focus #privNotice { -webkit-app-region: no-drag; }
+
+/* ---------------------------------------------------------- 集中モード */
+
+/* 枠も道具も出さず絵だけにする。カーソルが窓の中にあるあいだだけ、道具を絵の上に重ねる。
+   窓の縦横比は本体側で絵に合わせてあるので、まわりに余白は出ない */
+body.focus #canvasWrap {
+  padding: 0;
+  background: var(--bg);
+  /* スクロールバーは出さない。出ると、その幅のぶん狭く測って絵が縮む（縮んだあとは測り直さない）。
+     拡大したときに動かせるよう、スクロールそのものは残す */
+  scrollbar-width: none;
+}
+body.focus #canvasWrap::-webkit-scrollbar { display: none; }
+body.focus #cv { box-shadow: none; }
+
+body.focus #toolbar,
+body.focus #statusbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+  background: rgba(30, 33, 38, .93);
+}
+body.focus #toolbar { top: 0; }
+body.focus #statusbar { bottom: 0; }
+body.focus.ui #toolbar,
+body.focus.ui #statusbar { opacity: 1; pointer-events: auto; }
+
+/* 絵の上に重ねるので、道具は小さく詰めて出す（折り返して絵を大きく隠さないように） */
+body.focus #toolbar { padding: 4px 7px; gap: 4px; }
+body.focus .tool { width: 34px; padding: 3px 0 2px; }
+body.focus .tool span { display: none; }
+body.focus .sep { height: 20px; margin: 0 2px; }
+body.focus .sw { width: 18px; height: 18px; }
+body.focus .wd { width: 24px; height: 22px; }
+body.focus .pick { height: 22px; }
+body.focus .txt { height: 26px; padding: 0 9px; font-size: 13.5px; }
+/* 集中モードの窓は絵に合わせて 140px まで細くなり、帯の中身（お気に入り＋拡大・縮小で約 500px）が入りきらない。
+   ツールバーと同じく折り返して上へ伸ばす（1行固定だと右端の「＋」と倍率が窓の外に出て押せない）。
+   案内は幅 0 から伸びる扱いにして、折り返しの原因にしない */
+body.focus #statusbar {
+  height: auto; min-height: 28px; padding: 3px 10px;
+  flex-wrap: wrap; row-gap: 3px; justify-content: flex-end;
+  font-size: 13px;
+}
+body.focus #stTip { flex: 1 1 0; }
+body.focus #statusbar .dot,
+body.focus #statusbar .bar,
+body.focus .favLabel { display: none; }
+body.focus #finish { height: 22px; font-size: 13px; }
+body.focus #favs,
+body.focus #finishBox,
+body.focus #zoomBox { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; row-gap: 3px; min-width: 0; }
+body.focus .mini { height: 22px; min-width: 24px; padding: 0 6px; font-size: 13px; }
+body.focus .fav { height: 22px; }
+body.focus .fav svg { width: 15px; height: 15px; }
+
+/* 枠が無いと窓をつかめないので、ツールバーの空いている所をつかみ代にする。
+   押せるものは no-drag に戻す（drag のままだと押しても窓の移動になる） */
+body.focus #toolbar { -webkit-app-region: drag; }
+body.focus #toolbar button,
+body.focus #toolbar select,
+body.focus #toolbar label,
+body.focus #toolbar input { -webkit-app-region: no-drag; }
+
+[hidden] { display: none !important; }

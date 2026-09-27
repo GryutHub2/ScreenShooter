@@ -1,0 +1,4 @@
+# npm install で入る部品（数百MB。package.json から作り直せる）
+node_modules/
+# ショートカットは作った人のパソコンのパスが入る（tools\make-shortcut.ps1 で作り直せる）
+*.lnk

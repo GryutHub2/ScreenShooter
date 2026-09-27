@@ -1,0 +1,29 @@
+/* Windows 標準メニュー（約 12px）の 1.5 倍 */
+html, body {
+  margin: 0;
+  background: #2b2d31;
+  color: #e8e8e8;
+  font: 18px "Yu Gothic UI", "Segoe UI", sans-serif;
+  user-select: none;
+  overflow: hidden;
+}
+#menu {
+  display: inline-block;
+  padding: 6px 0;
+  border: 1px solid #4a4d55;
+  min-width: 320px;
+  white-space: nowrap;
+}
+.item {
+  display: flex;
+  gap: 32px;
+  justify-content: space-between;
+  padding: 9px 20px 9px 24px;
+  cursor: default;
+}
+.item.active { background: #3d6fb4; color: #fff; }
+.item.child { padding-left: 48px; }
+.accel { color: #a0a4ab; }
+.item.active .accel { color: #dde6f5; }
+.sep { height: 1px; margin: 6px 12px; background: #4a4d55; }
+[hidden] { display: none !important; }

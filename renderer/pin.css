@@ -1,0 +1,57 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #23262b;
+  color: #fff;
+  font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  font-size: 12px;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: move;
+}
+
+/* 縁の上では大きさを変えられることをカーソルで知らせる（pin.js が data-edge を付ける） */
+body[data-edge="n"], body[data-edge="s"] { cursor: ns-resize; }
+body[data-edge="e"], body[data-edge="w"] { cursor: ew-resize; }
+body[data-edge="nw"], body[data-edge="se"] { cursor: nwse-resize; }
+body[data-edge="ne"], body[data-edge="sw"] { cursor: nesw-resize; }
+
+/* 窓の大きさ＝絵の大きさ。大きさはウィンドウ側で決めるので、ここでは窓いっぱいに広げるだけ */
+#img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* 枠が無いので、カーソルを乗せたときだけ縁を出して「浮かせた絵」だと分かるようにする */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(46, 125, 215, 0);
+  transition: box-shadow .12s;
+}
+body:hover::after { box-shadow: inset 0 0 0 1px rgba(46, 125, 215, .9); }
+
+/* 大きさ・濃さを変えたときと、出した直後の使い方の案内 */
+#badge {
+  position: fixed;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 12px);
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(20, 22, 26, .82);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+#badge[hidden] { display: none; }
