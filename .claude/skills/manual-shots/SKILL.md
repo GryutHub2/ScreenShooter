@@ -38,9 +38,12 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 | `before-after` | select / combine / diff（履歴パネルで2枚をえらぶ → 右クリック） | `--combY` `--diffY` `--itemX`（右クリックした点からメニュー項目までの実ピクセル。calib の静止画で測る）、`--capY` |
 | `pin` | pin-wheel / pin-corner / pin-opacity（浮かせた絵の大きさ・濃さ） | `--only` |
 | `shapes` | shapes-copy-snap（図形の Ctrl+C/V と Shift の吸い付き） | なし |
+| `privacy` | autoblur / blur-manual（自動ぼかし → 足りない所を B で囲む） | なし |
+| `highlight` | spot / zoom / marker（スポットライト・拡大鏡・蛍光ペン） | `--only` |
+| `editor-calib` | 撮らない。`--page=<架空の画面>` を編集画面で開き、窓全体の静止画と部品の位置を残す | `--page` `--height` |
 
 新しい場面は、既存の1つを写して作る。共通の部品は `harness.js`：
-`main(名前, 本体)`・`clip(ctx, 名前, 録る四角DIP, 命令)`・`run(命令)`・`mv(点, ms)`・`cap(番号)`・`makeCaption`・`makeCursor`・`grab`・`phys`（DIP → 実ピクセル）。
+`main(名前, 本体)`・`openInEditor(ctx, 架空の画面, 窓の高さ)`（編集画面で開き、絵の座標 → 画面の位置を返す）・`clip(ctx, 名前, 録る四角DIP, 命令)`・`run(命令)`・`mv(点, ms)`・`cap(番号)`・`makeCaption`・`makeCursor`・`grab`・`phys`（DIP → 実ピクセル）。
 アプリの中の関数・変数は `ctx.A.<名前>` で届く。足りなければ `harness.js` の `names` に足す（無い名前は null になる）。
 
 ## ハマりどころ
@@ -52,7 +55,9 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 - 前の回で付いた図形や履歴は、次の回に写り込む。1本ごとに元へ戻すか、撮る順を工夫する（違いの赤枠は「後」の絵に残るので、並べて1枚にを先に撮る）
 - 編集画面の図形の**角と辺の真ん中はつまみ**。そこを掴むと、動かずに大きさが変わる。動かす回は辺のつまみから離れた所を掴む
 - 浮かせた絵は、ホイールでカーソルの下を中心に広がる。広がっても録る範囲に収まる位置に置く
-- 浮かせた絵を大きくした瞬間の1コマに、窓の下地（濃い灰色）が出ることがある。アプリの実際の見え方なので、GIF を加工して消さない
+- 浮かせた絵を大きくした瞬間の1コマに、広がった所が黒く写る。アプリの実際の見え方（AGENTS.md 参照）なので、GIF を加工して消さない
+- **1本録り終えるたびに、録画の確認画面が一瞬手前に出て、キーの行き先が外れる。** マウスは効くので、道具のキーが効かないまま前の道具で描いてしまう。次の回の前に編集画面のタイトルバーを押す（`highlight` の `focus()`）
+- 編集画面の **Esc は、何も選んでいないと編集画面を閉じる**。後片付けは Ctrl+Z で行い、Esc を使わない
 - お知らせ（トースト）は約4秒で消える。台本の前に出たものは、消えるまで待ってから録る
 - 字幕の文字は日本語なので、`input.ps1` には番号（`echo CAP 3`）だけを通す（標準入力で日本語が化けるため）
 - `input.ps1` と `sheet.ps1` は ASCII だけで書く（日本語を入れるなら BOM 付き UTF-8）

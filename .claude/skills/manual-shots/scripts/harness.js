@@ -206,6 +206,34 @@ async function grab(rectDip, file) {
   await run([`grab ${r.x} ${r.y} ${r.width} ${r.height} ${file}`])
 }
 
+// 架空の画面（<work>/dummy/<name>.png）を取り込んで編集画面で開き、画面の真ん中・最前面に置く。
+// 返す at(x, y) は「絵の座標 → 画面の実ピクセル」、img は絵が見えている四角（DIP）、el(sel) は画面の部品の四角（DIP）
+async function openInEditor(ctx, name, height) {
+  const { app, screen: scr } = require('electron')
+  const src = path.join(ctx.STAGE, 'スクショ_2026-09-28_' + name + '.png')
+  fs.copyFileSync(path.join(ctx.WORK, 'dummy', name + '.png'), src)
+  app.emit('second-instance', {}, [process.execPath, src], ctx.STAGE)
+  const ed = await waitFor(() => byUrl('editor.html')[0], 15000)
+  if (!ed) throw new Error('editor did not open')
+  await waitFor(() => ed.webContents.executeJavaScript('!!(state && state.img)'), 15000)
+  const wa = scr.getPrimaryDisplay().workArea
+  const eb = ed.getBounds()
+  ed.setBounds({ x: Math.round(wa.x + (wa.width - eb.width) / 2), y: Math.round(wa.y + (wa.height - height) / 2), width: eb.width, height })
+  ed.setAlwaysOnTop(true)
+  await sleep(900)
+  const g = await ed.webContents.executeJavaScript(
+    '(() => { const r = cv.getBoundingClientRect(); const v = view(); return { left: r.left, top: r.top, w: r.width, h: r.height, zoom: state.zoom, vx: v.x, vy: v.y } })()')
+  const cb = ed.getContentBounds()
+  log('editor', cb, 'canvas', g)
+  const at = (x, y) => phys(cb.x + g.left + (x - g.vx) * g.zoom, cb.y + g.top + (y - g.vy) * g.zoom)
+  const img = { x: cb.x + g.left, y: cb.y + g.top, w: g.w, h: g.h }
+  const el = async (sel) => {
+    const r = await ed.webContents.executeJavaScript(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()`)
+    return r && { x: cb.x + r.x, y: cb.y + r.y, width: r.width, height: r.height }
+  }
+  return { ed, cb, g, at, img, el }
+}
+
 let finishing = false
 async function finish(code) {
   if (finishing) return
@@ -238,5 +266,5 @@ function main(scene, body) {
 
 module.exports = {
   ROOT, arg, sleep, log, wins, byUrl, waitFor, phys, physRect,
-  run, mv, cap, makeCaption, moveCaption, caption, makeCursor, clip, grab, main,
+  run, mv, cap, makeCaption, moveCaption, caption, makeCursor, clip, grab, main, openInEditor,
 }

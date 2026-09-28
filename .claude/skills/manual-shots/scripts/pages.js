@@ -75,7 +75,48 @@ const form = doc(`<style>
   <div class="btns"><button>下書き保存</button><button class="primary">送信</button></div>
 </div>`, FORM_W, FORM_H)
 
+// 自動ぼかし用。値はすべて見本と分かるもの（example.com・見本の番号・でたらめのキー）。
+// 「お名前」は自動ぼかしが探さない見出しなので、手でぼかす例に使う
+const account = doc(`<style>
+dl{display:grid;grid-template-columns:120px 1fr;margin:0;background:#fff;font-size:16px}
+dt,dd{margin:0;padding:10px 14px;border-bottom:1px solid #e3e6eb}
+dt{color:#667;background:#f7f8fa}
+dd.key{font-family:Consolas,monospace;font-size:14px}
+</style>
+<header>会員情報 <small>サンプル</small></header>
+<div class="wrap"><dl>
+  <dt>お名前</dt><dd>山田 花子</dd>
+  <dt>メール</dt><dd>hanako.yamada@example.com</dd>
+  <dt>電話番号</dt><dd>090-1234-5678</dd>
+  <dt>会員番号</dt><dd>A-00123456</dd>
+  <dt>API キー</dt><dd class="key">sk-ant-api03-Qx7rT2mZ9vLp4Kw8Hn3Bd6YcR1</dd>
+</dl>
+<div class="btns"><button>閉じる</button><button class="primary">変更する</button></div></div>`, 600, 380)
+
+// 目立たせる道具用。小さい版の番号（拡大鏡）・エラーの1行（蛍光ペン）・押してほしいボタン（スポットライト）
+const settings = doc(`<style>
+.row{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e3e6eb;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:15px}
+.row small{display:block;color:#889;font-size:12px;margin-top:2px}
+.log{background:#1f2329;color:#c9d1d9;font-family:Consolas,monospace;font-size:13px;border-radius:6px;padding:8px 12px;line-height:1.7}
+.log .err{color:#ff7b72}
+.ver{position:absolute;right:16px;bottom:8px;font-size:10px;color:#99a}
+</style>
+<header>アプリの設定 <small>サンプル</small></header>
+<div class="wrap">
+  <div class="row"><div>保存先のフォルダ<small>D:\\写真\\まとめ</small></div><button class="primary">保存先を選ぶ</button></div>
+  <div class="row"><div>起動時に開く<small>前回の画面</small></div><button>変更</button></div>
+  <div class="log">
+    10:02:11 起動しました<br>
+    10:02:12 設定を読み込みました<br>
+    <span class="err">10:02:13 ERROR 保存先のフォルダが見つかりません</span><br>
+    10:02:13 既定のフォルダを使います
+  </div>
+</div>
+<div class="ver">バージョン 2.4.1（ビルド 1187）</div>`, 600, 380)
+
 const PNGS = {
+  'account': { html: account, w: 600, h: 380 },
+  'settings': { html: settings, w: 600, h: 380 },
   '1-todo': { html: todo, w: 520, h: 330 },
   '2-before': { html: kakeibo(false), w: 520, h: 330 },
   '3-after': { html: kakeibo(true), w: 520, h: 330 },

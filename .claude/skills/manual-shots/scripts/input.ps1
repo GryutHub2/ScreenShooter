@@ -5,7 +5,7 @@
 #   ldown | lup       press / release the left button (drag = ldown, move, lup)
 #   wheel N           wheel by N (120 = one notch up, -120 = one notch down)
 #   ctrl|shift down|up  hold / release the modifier
-#   key NAME          press one key: esc c v z delete
+#   key NAME          press one key: a-z, 0-9, esc, delete, enter
 #   wait MS
 #   grab X Y W H FILE save that screen rectangle (physical px) as PNG
 #   echo TEXT         print TEXT (the driver uses it to sync captions and ripples)
@@ -56,7 +56,7 @@ public static class Inp {
 }
 "@
 [Inp]::Dpi()
-$keys = @{ 'esc' = 0x1B; 'c' = 0x43; 'v' = 0x56; 'z' = 0x5A; 'delete' = 0x2E }
+$keys = @{ 'esc' = 0x1B; 'delete' = 0x2E; 'enter' = 0x0D }
 # Whatever happens, never leave a key or the button held down on the real PC
 $held = @{ 'l' = $false; 'ctrl' = $false; 'shift' = $false }
 [Console]::Out.WriteLine('READY'); [Console]::Out.Flush()
@@ -72,7 +72,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
     'wheel'  { [Inp]::Wheel([int]$p[1]) }
     'ctrl'   { [Inp]::Key(0x11, $p[1] -eq 'down'); $held['ctrl'] = ($p[1] -eq 'down') }
     'shift'  { [Inp]::Key(0x10, $p[1] -eq 'down'); $held['shift'] = ($p[1] -eq 'down') }
-    'key'    { [Inp]::Tap([byte]$keys[$p[1]]) }
+    'key'    { if ($p[1] -match '^[a-z0-9]$') { [Inp]::Tap([byte][char]$p[1].ToUpper()) } else { [Inp]::Tap([byte]$keys[$p[1]]) } }
     'wait'   { Start-Sleep -Milliseconds ([int]$p[1]) }
     'grab'   {
       $bmp = New-Object System.Drawing.Bitmap ([int]$p[3]), ([int]$p[4])

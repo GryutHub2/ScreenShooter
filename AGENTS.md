@@ -123,6 +123,7 @@
 - 暗幕（screen-saver 段）を壊すと、浮かせた絵（floating 段）が最前面から外れる。暗幕を閉じたら `raisePins()` で付け直す（`closeOverlays` とスクロール撮影の後片付け）。
 - 浮かせた絵の縁のドラッグも Windows に任せず、`startPinResize()` で本体がカーソルを読んで `scale` を出す（任せると縦横比が崩れ、150% の画面で窓が育つ）。IMPORTANT: 外周（150% で左・上 約4 DIP、右・下 1px）は Windows が横取りして画面側に押した知らせが来ない。`will-resize` を合図に自前へ切り替え、`WM_EXITSIZEMOVE` で終える形を消すと、そこを掴んだとき何も起きなくなる。
 - 浮かせた絵の移動に `-webkit-app-region: drag` を使わない（右クリック・ホイールが届かない）。押している間は本体が `getCursorScreenPoint` を読み、押した瞬間の中身の大きさごと `setContentBounds` で動かす（`setPosition` だけだと 150% の画面で呼ぶたびに窓が育つ）。
+- 浮かせた絵をホイールで大きくした瞬間、広がった右・下が1コマ黒くなる（描画が追いつくまで GPU 側が黒で埋める）。`backgroundColor` では消えない。`transparent` は影が消えて 150% の画面で幅が 1 縮む、`disable-direct-composition` は透明な窓が映らなくなるので、どちらも採らない（2026-09-28 ユーザー判断：そのままにする）。
 - 見えない編集画面の `editor:exported` は `{ dataUrl, x, y }`（画角の左上）を返す。文字列だけに戻すと、書き込み入りの絵を浮かせたとき位置がずれる。
 - 違いの赤枠は `editor:addShapes`（または editor:init の `addShapes`）で編集画面に足させる。main で meta.shapes に直接書くと、開いている窓の次の書き戻しで消え、Ctrl+Z でも消せない。
 - `lib/diff.js` で枠を減らすときは、距離を広げず `coarsen()` でマスを粗くする（縦長の絵で止まる）。カーソルとして捨てる大きさは縦（`caretW`/`caretH`）と横（`thin`/`thinLong`）で別（縦のカーソルは 150% の画面で 64px になる）。
