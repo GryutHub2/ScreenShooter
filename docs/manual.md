@@ -179,9 +179,9 @@ AI サービスやクラウドの読み取りには、画像を送っていま�
 - このアプリ自体にも、インターネットへ送る処理は入っていません。撮った絵も読んだ文字も外へ出さず、読んだ文字はどこにも残しません
 - **自分で確かめる方法**：Wi-Fi を切る（機内モードにする）→ 撮る。ネットにつながっていなくても、自動ぼかしはそのまま効きます
 - **調べるときの検索語**：「Windows.Media.Ocr」「Windows OCR オフライン」
-- 公式の資料：
-  - [Optical Character Recognition (OCR) for Windows 10](https://blogs.windows.com/windowsdeveloper/2016/02/08/optical-character-recognition-ocr-for-windows-10/)（Windows Developer Blog）
-  - [OcrEngine クラス (Windows.Media.Ocr)](https://learn.microsoft.com/ja-jp/uwp/api/windows.media.ocr.ocrengine)（Microsoft Learn）
+- 根拠の資料：[簡単に利用できる PDF 文字認識 OCR 比較まとめ ～ AI OCR の頭抜けた実力](https://recruit.group.gmo/engineer/jisedai/blog/ai-ocr/)（GMO インターネットグループ 次世代システム研究室、2021年）
+  - OCR を「ローカル系（パソコンに入れて使う）」と「クラウド型」に分けて比べた記事です。Windows.Media.Ocr は **ローカル系 OCR** として紹介されています
+- その他の参考資料：[Optical Character Recognition (OCR) for Windows 10](https://blogs.windows.com/windowsdeveloper/2016/02/08/optical-character-recognition-ocr-for-windows-10/)（Microsoft の Windows Developer Blog・英語。上の原文の出典）
 
 ※ Windows 全体の診断データ（Microsoft へ送る利用状況）を送るかどうかは、Windows の設定で決まります。このアプリの読み取りとは別の話です。
 
