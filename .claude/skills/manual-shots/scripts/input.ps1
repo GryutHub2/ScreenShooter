@@ -5,7 +5,7 @@
 #   ldown | lup       press / release the left button (drag = ldown, move, lup)
 #   wheel N           wheel by N (120 = one notch up, -120 = one notch down)
 #   ctrl|shift down|up  hold / release the modifier
-#   key NAME          press one key: a-z, 0-9, esc, delete, enter
+#   key NAME          press one key: a-z, 0-9, esc, delete, enter, up, down
 #   wait MS
 #   grab X Y W H FILE save that screen rectangle (physical px) as PNG
 #   echo TEXT         print TEXT (the driver uses it to sync captions and ripples)
@@ -56,7 +56,7 @@ public static class Inp {
 }
 "@
 [Inp]::Dpi()
-$keys = @{ 'esc' = 0x1B; 'delete' = 0x2E; 'enter' = 0x0D }
+$keys = @{ 'esc' = 0x1B; 'delete' = 0x2E; 'enter' = 0x0D; 'up' = 0x26; 'down' = 0x28 }
 # Whatever happens, never leave a key or the button held down on the real PC
 $held = @{ 'l' = $false; 'ctrl' = $false; 'shift' = $false }
 [Console]::Out.WriteLine('READY'); [Console]::Out.Flush()

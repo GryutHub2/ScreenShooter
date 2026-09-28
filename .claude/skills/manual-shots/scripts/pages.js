@@ -114,6 +114,26 @@ const settings = doc(`<style>
 </div>
 <div class="ver">バージョン 2.4.1（ビルド 1187）</div>`, 600, 380)
 
+// 番号マーカー用。入れる順に並んだ登録画面。左の余白（96px）に ①②③ を置く。行の間隔は 62px でそろえる
+const signup = doc(`<style>
+.sf{padding:16px 24px 0 96px}
+.fr{display:flex;align-items:center;height:38px;margin-bottom:24px;font-size:15px}
+.fr .lab{width:92px;color:#556}
+.fr .in{flex:1;background:#fff;border:1px solid #c9d0da;border-radius:6px;height:38px}
+.agree{display:flex;align-items:center;height:38px;font-size:15px;margin-bottom:18px}
+.agree b{display:inline-block;width:18px;height:18px;border:2px solid #9aa5b4;border-radius:4px;margin-right:10px;background:#fff}
+.sf .go{display:flex;justify-content:flex-end}
+.sf .go button{padding:8px 34px}
+</style>
+<header>会員登録 <small>サンプル</small></header>
+<div class="sf">
+  <div class="fr"><span class="lab">お名前</span><span class="in"></span></div>
+  <div class="fr"><span class="lab">メール</span><span class="in"></span></div>
+  <div class="fr"><span class="lab">パスワード</span><span class="in"></span></div>
+  <div class="agree"><b></b>利用規約に同意する</div>
+  <div class="go"><button class="primary">登録する</button></div>
+</div>`, 600, 380)
+
 // スクロール撮影用の長いページ（窓に直に出す）。画面に貼り付く見出しは置かない（継ぎ目を見失うため）。
 // 1件ずつ文の長さ・色を変えて、どこを切っても同じ帯にならないようにする
 const LONG_W = 760
@@ -152,6 +172,8 @@ html{overflow-y:scroll}body{overflow:visible;width:auto!important;height:auto!im
 const PNGS = {
   'account': { html: account, w: 600, h: 380 },
   'settings': { html: settings, w: 600, h: 380 },
+  'signup': { html: signup, w: 600, h: 380 },
+  'form': { html: form, w: FORM_W, h: FORM_H },
   '1-todo': { html: todo, w: 520, h: 330 },
   '2-before': { html: kakeibo(false), w: 520, h: 330 },
   '3-after': { html: kakeibo(true), w: 520, h: 330 },

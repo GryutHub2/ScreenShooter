@@ -193,7 +193,7 @@ function stepNumber(s) {
   return n + 1   // まだ配列に入っていない＝いま描いているもの
 }
 
-function stepRadius(fontSize) { return Math.max(9, (fontSize || 28) * 0.95) }
+function stepRadius(fontSize) { return Math.max(9, (fontSize || 28) * 0.75) }
 
 function drawStep(g, s) {
   const r = norm(s)
@@ -1905,7 +1905,7 @@ cv.addEventListener('pointerdown', (e) => {
   if (state.tool === 'step') {
     const rr = stepRadius(state.fontSize)
     // Shift を押しながら置くと、ほかの図形の中心・端にそろう
-    const guides = {}
+    const guides = { px: p.x, py: p.y }
     if (e.shiftKey) {
       const o = snapOffset({ x: p.x - rr, y: p.y - rr, w: rr * 2, h: rr * 2 }, null, null)
       p.x += o.dx; p.y += o.dy
@@ -1949,7 +1949,10 @@ cv.addEventListener('pointermove', (e) => {
     } else if (pending.type === 'pen' || pending.type === 'marker') {
       addPenPoint(pending, p)
     } else if (pending.type === 'step') {
-      // 押した場所を中心に、引っ張った距離が半径
+      // 押した場所を中心に、引っ張った距離が半径。クリックの手ぶれ（と Shift で吸い付いたずれ）は
+      // ドラッグと見なさず、文字の大きさに合わせた既定の大きさのままにする（数px 動くだけで最小に縮むため）
+      if (!drag.sized && Math.hypot(p.x - drag.px, p.y - drag.py) < 6 / state.zoom) return
+      drag.sized = true
       const rr = Math.max(9, Math.hypot(p.x - drag.cx, p.y - drag.cy))
       pending.x1 = drag.cx - rr; pending.y1 = drag.cy - rr
       pending.x2 = drag.cx + rr; pending.y2 = drag.cy + rr

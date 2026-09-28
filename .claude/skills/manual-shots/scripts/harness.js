@@ -34,7 +34,7 @@ function boot(scene) {
   app.setPath('userData', UD)
   fs.writeFileSync(path.join(UD, 'settings.json'), JSON.stringify({
     hotkeyRegion: '', saveDir: SAVE, autoBlur: false, libraryPinned: true,
-    recordAudio: false, gifMaxWidth: 0, recordFps: 15, gifFps: 10,
+    recordAudio: false, gifMaxWidth: Number(arg('gifw', '0')), recordFps: 15, gifFps: 10,
   }), 'utf8')
 
   const MAIN = path.join(ROOT, 'main.js')

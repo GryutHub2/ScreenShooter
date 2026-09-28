@@ -31,8 +31,9 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 2. `--mode=calib` で静止画を1枚撮り、位置を目で確かめる（`<work>\<場面>-<番号>\out\calib.png`）
 3. 本番を撮る。GIF は `<work>\<場面>-<番号>\out\<名前>.gif`、記録は同じフォルダの `log.txt`
 4. `scripts\sheet.ps1 -Gif <gif> -Out <png> -N 9` でコマを並べた一覧を作り、**全部の字幕・動きを目で確かめる**
-5. 一部の回だけ撮り直すときは `--only=<名前>,<名前>`（場面が対応していれば）
-6. 良いものを `docs\images\anim-<名前>.gif` に写し、`docs\manual.md` に `<img width="560〜640">` で載せる
+5. 窓ごと録る場面は GIF が大きくなるので `--gifw=1000`（GIF の横幅の上限。実ピクセル）を付ける
+6. 一部の回だけ撮り直すときは `--only=<名前>,<名前>`（場面が対応していれば）
+7. 良いものを `docs\images\anim-<名前>.gif` に写し、`docs\manual.md` に `<img width="560〜640">` で載せる
 
 ## 場面（scripts/scenes）
 
@@ -45,6 +46,9 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 | `highlight` | spot / zoom / marker（スポットライト・拡大鏡・蛍光ペン） | `--only` |
 | `scroll` | scroll（長いページのスクロール撮影）＋ out/scroll-result.png（できあがり） | なし |
 | `record` | record（録画の始め方〜停止。grabClip で撮る）＋ out/record-confirm.png（確認画面） | なし |
+| `steps` | steps（番号マーカーを置く・Shift でそろえる・右クリックで消す） | なし |
+| `polish` | resize / finish（サイズ 50%・仕上げ「背景つき」と「見る」。編集画面の窓ごと録る） | `--only`、`--gifw=1000` |
+| `focus` | focus（集中モードに入る → 道具が出る → 解除。窓ごと録る） | `--gifw=1000` |
 | `editor-calib` | 撮らない。`--page=<架空の画面>` を編集画面で開き、窓全体の静止画と部品の位置を残す | `--page` `--height` |
 
 新しい場面は、既存の1つを写して作る。共通の部品は `harness.js`：
@@ -65,6 +69,8 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 - 編集画面の **Esc は、何も選んでいないと編集画面を閉じる**。後片付けは Ctrl+Z で行い、Esc を使わない
 - **範囲選択・スクロール撮影・録画を始めた瞬間の画面が、そのまま暗幕の絵になる。** 字幕と矢印が写り込むので、始める直前に `overlaysVisible(false)`、暗幕が出てから `true` に戻す。スクロール撮影の最中も矢印は隠す（1枚ずつに写り込んで、つなぎ目の判定を狂わせる）
 - 字幕はスクロール撮影が撮る範囲の外（ページの上の余白）に置く
+- 窓ごと録る場面は、字幕を絵・ダイアログに重ねない（窓の下の無地の帯か、下の帯の上）。下の帯の「仕上げ」のプルダウンは窓の下へはみ出して開くので、その分まで録る
+- 集中モードは窓を作り直すので、新しい窓は最前面にならず無地の窓の下に隠れる。切り替わるたびに `setAlwaysOnTop(true)` で上げる（`focus` の `nextEditor()`）。空いた所に履歴パネルが写るので先に隠す
 - 録画の操作バーは `setContentProtection(true)` なので、`grabClip` では写らない。見せるときだけ、台本側で `false` にする（アプリは変えない）
 - 録画の操作バーは画面の隅（左下が空いていれば左下）、止めたあとの確認画面は画面の真ん中に出る。GIF は隅まで、確認画面は静止画で撮る
 - お知らせ（トースト）は約4秒で消える。台本の前に出たものは、消えるまで待ってから録る
