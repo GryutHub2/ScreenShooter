@@ -114,6 +114,41 @@ const settings = doc(`<style>
 </div>
 <div class="ver">バージョン 2.4.1（ビルド 1187）</div>`, 600, 380)
 
+// スクロール撮影用の長いページ（窓に直に出す）。画面に貼り付く見出しは置かない（継ぎ目を見失うため）。
+// 1件ずつ文の長さ・色を変えて、どこを切っても同じ帯にならないようにする
+const LONG_W = 760
+const LONG_H = 520
+const NEWS = [
+  ['重要', '#c0392b', '10月から、ポイントの有効期限が1年に変わります'],
+  ['更新', '#3b6fb6', 'アプリを更新しました。検索が速くなっています'],
+  ['お知らせ', '#23803f', '年末年始の営業時間のご案内'],
+  ['更新', '#3b6fb6', '明るさの自動調整を追加しました'],
+  ['メンテ', '#8e44ad', '9月30日 2:00〜4:00 にメンテナンスを行います'],
+  ['お知らせ', '#23803f', '新しい店舗が駅前にオープンしました'],
+  ['重要', '#c0392b', 'パスワードの再設定をお願いしています（対象の方のみ）'],
+  ['更新', '#3b6fb6', '印刷の余白を細かく選べるようになりました'],
+  ['お知らせ', '#23803f', '秋のキャンペーンのお知らせ'],
+  ['メンテ', '#8e44ad', '10月5日 1:00〜3:00 に一部の機能が止まります'],
+  ['更新', '#3b6fb6', '文字の大きさを3段階から選べるようにしました'],
+  ['お知らせ', '#23803f', 'よくある質問のページを新しくしました'],
+  ['重要', '#c0392b', '古い版のアプリは11月で使えなくなります'],
+  ['更新', '#3b6fb6', 'ダークモードに対応しました'],
+  ['お知らせ', '#23803f', 'アンケートにご協力ください（5分ほど）'],
+  ['更新', '#3b6fb6', '通知の時刻を選べるようになりました'],
+]
+const longPage = doc(`<style>
+html{overflow-y:scroll}body{overflow:visible;width:auto!important;height:auto!important}
+.item{background:#fff;border:1px solid #e3e6eb;border-radius:8px;padding:12px 16px;margin-bottom:10px}
+.item .d{color:#889;font-size:13px}
+.item .t{font-size:16px;margin-top:4px}
+.tag{display:inline-block;color:#fff;font-size:12px;border-radius:4px;padding:1px 8px;margin-right:8px}
+.item p{margin:6px 0 0;color:#556;font-size:14px;line-height:1.6}
+</style>
+<header>お知らせ一覧 <small>サンプル</small></header>
+<div class="wrap">${NEWS.map(([tag, color, title], i) => `<div class="item"><span class="tag" data-c="${i}">${tag}</span><span class="d">2026/${String(9 - Math.floor(i / 6)).padStart(2, '0')}/${String(28 - i).padStart(2, '0')}</span>
+<div class="t">${title}</div><p>${'詳しくは、このお知らせの本文をご覧ください。'.repeat(1 + (i % 3))}</p></div>`).join('')}</div>
+<style>${NEWS.map(([, color], i) => `.tag[data-c="${i}"]{background:${color}}`).join('')}</style>`, LONG_W, LONG_H)
+
 const PNGS = {
   'account': { html: account, w: 600, h: 380 },
   'settings': { html: settings, w: 600, h: 380 },
@@ -122,4 +157,4 @@ const PNGS = {
   '3-after': { html: kakeibo(true), w: 520, h: 330 },
 }
 
-module.exports = { PNGS, form, FORM_W, FORM_H }
+module.exports = { PNGS, form, FORM_W, FORM_H, longPage, LONG_W, LONG_H }

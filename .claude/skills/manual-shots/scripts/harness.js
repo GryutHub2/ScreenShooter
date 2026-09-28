@@ -39,7 +39,7 @@ function boot(scene) {
 
   const MAIN = path.join(ROOT, 'main.js')
   const names = ['startRecording', 'stopRecording', 'closeRecordWindow', 'deleteEntry', 'notifyLibraryChanged',
-    'openPin', 'openEditor', 'fitContentBounds', 'libraryWin', 'editorWins', 'pinWins', 'DIFF_COLOR', 'DIFF_WIDTH']
+    'openPin', 'openEditor', 'fitContentBounds', 'libraryWin', 'editorWins', 'pinWins', 'DIFF_COLOR', 'DIFF_WIDTH', 'startRegionCapture', 'recording']
   const expose = names.map((n) => `get ${n}() { return typeof ${n} === 'undefined' ? null : ${n} }`).join(',\n')
   const mm = new Module(MAIN, module)
   mm.filename = MAIN
@@ -164,15 +164,24 @@ async function makeCursor() {
     if (!curWin || curWin.isDestroyed()) return
     const p = screen.getCursorScreenPoint()
     curWin.setPosition(Math.round(p.x - CUR / 2), Math.round(p.y - CUR / 2))
-    if (++n % 6 === 0) curWin.moveTop()
+    if (curShown && ++n % 6 === 0) curWin.moveTop()
   }, 16)
   curWin.showInactive()
 }
+// 字幕と矢印を一時的に隠す／戻す。アプリが画面を静止画にする瞬間（範囲選択の暗幕・スクロール撮影）に
+// 写り込ませないため
+let curShown = true
+function overlaysVisible(on) {
+  curShown = on
+  if (curWin && !curWin.isDestroyed()) { if (on) { curWin.showInactive(); curWin.moveTop() } else curWin.hide() }
+  if (!on && capWin && !capWin.isDestroyed()) capWin.hide()
+}
+
 function ripple() {
   if (curWin && !curWin.isDestroyed()) curWin.webContents.executeJavaScript('ripple()').catch(() => {})
 }
 
-// ---- アプリ自身の録画機能で1本撮る。rectDip の範囲を録り、GIF を OUT/<name>.gif に写す
+// ---- アプリ自身の録画機能で1本撮る。cmds は命令の配列か async 関数。rectDip の範囲を録り、GIF を OUT/<name>.gif に写す
 async function clip(ctx, name, rectDip, cmds) {
   const { A, SAVE, OUT } = ctx
   const disp = screen.getDisplayMatching(rectDip)
@@ -188,7 +197,9 @@ async function clip(ctx, name, rectDip, cmds) {
   }, 15000)
   if (!started) throw new Error('recording did not start: ' + name)
   await sleep(900)
-  await run(cmds)
+  // 命令の配列か、途中でアプリの様子を待つときは async 関数（中で run() を何回か呼ぶ）
+  if (typeof cmds === 'function') await cmds()
+  else await run(cmds)
   await sleep(200)
   A.stopRecording()
   const gif = await waitFor(() => fs.readdirSync(SAVE).find((f) => f.endsWith('.gif') && !before.has(f)), 120000)
@@ -200,10 +211,65 @@ async function clip(ctx, name, rectDip, cmds) {
   await sleep(600)
 }
 
+// ---- アプリの録画機能を使わずに1本撮る（録画そのものを見せるときなど、アプリの録画が使えない場面用）。
+// grabber.ps1 が rectDip を ms ごとに撮り、アプリの GIF 部品（lib/gif.js）でつなぐ。
+// Windows の「写さない」設定（setContentProtection）が付いた窓は写らないので、見せたい窓は先に外しておく
+async function grabClip(ctx, name, rectDip, cmds, ms = 100) {
+  const r = physRect(rectDip)
+  // 消さずに済むよう、毎回新しいフォルダに撮る
+  const dir = path.join(ctx.OUT, name + '-frames-' + Date.now())
+  const g = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'grabber.ps1'),
+    '-X', r.x, '-Y', r.y, '-W', r.width, '-H', r.height, '-Dir', dir, '-Ms', ms].map(String), { stdio: 'ignore' })
+  const done = new Promise((res) => g.on('exit', res))
+  if (!(await waitFor(() => fs.existsSync(dir) && fs.readdirSync(dir).some((f) => f.endsWith('.png')), 20000))) throw new Error('grabber did not start')
+  await sleep(300)
+  try {
+    if (typeof cmds === 'function') await cmds()
+    else await run(cmds)
+  } finally {
+    fs.writeFileSync(path.join(dir, 'stop'), '')
+    await done
+  }
+  const { nativeImage } = require('electron')
+  const GifLib = require(path.join(ROOT, 'lib', 'gif.js'))
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.png')).sort()
+  const times = files.map((f) => Number(f.slice(0, -4)))
+  const gif = GifLib.createGif(r.width, r.height)
+  for (let i = 0; i < files.length; i++) {
+    const bgra = nativeImage.createFromPath(path.join(dir, files[i])).toBitmap()
+    const rgba = new Uint8ClampedArray(bgra.length)
+    for (let p = 0; p < bgra.length; p += 4) { rgba[p] = bgra[p + 2]; rgba[p + 1] = bgra[p + 1]; rgba[p + 2] = bgra[p]; rgba[p + 3] = 255 }
+    gif.addFrame(rgba, i ? times[i] - times[i - 1] : 0)
+  }
+  // 最後のコマを少し見せてから終える（同じ絵を足すと、前のコマが長く出る）
+  if (files.length) {
+    const last = nativeImage.createFromPath(path.join(dir, files[files.length - 1])).toBitmap()
+    const rgba = new Uint8ClampedArray(last.length)
+    for (let p = 0; p < last.length; p += 4) { rgba[p] = last[p + 2]; rgba[p + 1] = last[p + 1]; rgba[p + 2] = last[p]; rgba[p + 3] = 255 }
+    gif.addFrame(rgba, 1200)
+  }
+  fs.writeFileSync(path.join(ctx.OUT, name + '.gif'), Buffer.from(gif.finish()))
+  log('gif', name, 'frames', files.length, 'ms', times.length ? times[times.length - 1] : 0, 'bytes', fs.statSync(path.join(ctx.OUT, name + '.gif')).size)
+}
+
 // 録画を開かずに、その範囲の静止画だけ撮る（位置合わせの確認用）
 async function grab(rectDip, file) {
   const r = physRect(rectDip)
   await run([`grab ${r.x} ${r.y} ${r.width} ${r.height} ${file}`])
+}
+
+// 録る範囲の全体を無地の窓で覆う（ほかの窓より先に作る）。架空の画面の窓より広く録るときは必ず使う。
+// 覆わないと、すき間から本物の画面が写る
+async function makeBackdrop(rectDip, color) {
+  const w = new BrowserWindow({
+    x: rectDip.x, y: rectDip.y, width: rectDip.width, height: rectDip.height, useContentSize: true,
+    frame: false, resizable: false, focusable: false, skipTaskbar: true, hasShadow: false, show: false,
+    alwaysOnTop: true, backgroundColor: color || '#2b2f36',
+  })
+  w.setIgnoreMouseEvents(true)
+  await w.loadURL('data:text/html,<body style="margin:0;background:' + encodeURIComponent(color || '#2b2f36') + '"></body>')
+  w.showInactive()
+  return w
 }
 
 // 架空の画面（<work>/dummy/<name>.png）を取り込んで編集画面で開き、画面の真ん中・最前面に置く。
@@ -266,5 +332,5 @@ function main(scene, body) {
 
 module.exports = {
   ROOT, arg, sleep, log, wins, byUrl, waitFor, phys, physRect,
-  run, mv, cap, makeCaption, moveCaption, caption, makeCursor, clip, grab, main, openInEditor,
+  run, mv, cap, overlaysVisible, makeBackdrop, grabClip, makeCaption, moveCaption, caption, makeCursor, clip, grab, main, openInEditor,
 }

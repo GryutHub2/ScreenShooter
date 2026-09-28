@@ -10,7 +10,10 @@ description: 手順書（docs/manual.md）に載せる動く画像（GIF）を�
 
 ## 守ること
 
-- IMPORTANT: 写すのは `scripts/pages.js` の**架空の画面だけ**。録る範囲は、架空の画面・アプリの窓の中に収める（外の本物の画面が写る）
+- IMPORTANT: 写すのは `scripts/pages.js` の**架空の画面だけ**。録る範囲は、架空の画面・アプリの窓の中に収める。
+  字幕の余白などで窓より広く録るときは、**先に `makeBackdrop()` で範囲全体を無地の窓で覆う**（すき間から本物の画面が写る。実際に写った）
+- IMPORTANT: 撮れた GIF・静止画は、手順書に写す前に**全部のコマの端まで**本物の画面が写っていないか見る。写っていたら、その回の作業フォルダごと消す
+- 窓全体の静止画は `getContentBounds()` で撮り、四辺を数px切り落とす（`getBounds()` は見えない縁を含み、角の丸い窓は四隅に後ろが透ける）
 - IMPORTANT: 本番の保存先には触らない。撮る前後に、本番の保存先の枚数が変わっていないかを数えて報告する
 - 撮影のあいだは、マウス・キーボードが勝手に動く。実行の前に「◯分ほど触らないで」と伝える
 - 押したままのキー・ボタンは `input.ps1` が終わるときに必ず離す。途中で強制終了したら、Ctrl・Shift が押しっぱなしになっていないか確かめる
@@ -40,10 +43,12 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 | `shapes` | shapes-copy-snap（図形の Ctrl+C/V と Shift の吸い付き） | なし |
 | `privacy` | autoblur / blur-manual（自動ぼかし → 足りない所を B で囲む） | なし |
 | `highlight` | spot / zoom / marker（スポットライト・拡大鏡・蛍光ペン） | `--only` |
+| `scroll` | scroll（長いページのスクロール撮影）＋ out/scroll-result.png（できあがり） | なし |
+| `record` | record（録画の始め方〜停止。grabClip で撮る）＋ out/record-confirm.png（確認画面） | なし |
 | `editor-calib` | 撮らない。`--page=<架空の画面>` を編集画面で開き、窓全体の静止画と部品の位置を残す | `--page` `--height` |
 
 新しい場面は、既存の1つを写して作る。共通の部品は `harness.js`：
-`main(名前, 本体)`・`openInEditor(ctx, 架空の画面, 窓の高さ)`（編集画面で開き、絵の座標 → 画面の位置を返す）・`clip(ctx, 名前, 録る四角DIP, 命令)`・`run(命令)`・`mv(点, ms)`・`cap(番号)`・`makeCaption`・`makeCursor`・`grab`・`phys`（DIP → 実ピクセル）。
+`main(名前, 本体)`・`openInEditor(ctx, 架空の画面, 窓の高さ)`（編集画面で開き、絵の座標 → 画面の位置を返す）・`clip(ctx, 名前, 録る四角DIP, 命令)`（アプリの録画で撮る）・`grabClip(ctx, 名前, 録る四角DIP, 命令)`（画面を何度も撮って `lib/gif.js` でつなぐ。録画そのものを見せるとき）・`makeBackdrop(四角)`・`overlaysVisible(真偽)`・`run(命令)`・`mv(点, ms)`・`cap(番号)`・`makeCaption`・`makeCursor`・`grab`・`phys`（DIP → 実ピクセル）。
 アプリの中の関数・変数は `ctx.A.<名前>` で届く。足りなければ `harness.js` の `names` に足す（無い名前は null になる）。
 
 ## ハマりどころ
@@ -58,6 +63,10 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 - 浮かせた絵を大きくした瞬間の1コマに、広がった所が黒く写る。アプリの実際の見え方（AGENTS.md 参照）なので、GIF を加工して消さない
 - **1本録り終えるたびに、録画の確認画面が一瞬手前に出て、キーの行き先が外れる。** マウスは効くので、道具のキーが効かないまま前の道具で描いてしまう。次の回の前に編集画面のタイトルバーを押す（`highlight` の `focus()`）
 - 編集画面の **Esc は、何も選んでいないと編集画面を閉じる**。後片付けは Ctrl+Z で行い、Esc を使わない
+- **範囲選択・スクロール撮影・録画を始めた瞬間の画面が、そのまま暗幕の絵になる。** 字幕と矢印が写り込むので、始める直前に `overlaysVisible(false)`、暗幕が出てから `true` に戻す。スクロール撮影の最中も矢印は隠す（1枚ずつに写り込んで、つなぎ目の判定を狂わせる）
+- 字幕はスクロール撮影が撮る範囲の外（ページの上の余白）に置く
+- 録画の操作バーは `setContentProtection(true)` なので、`grabClip` では写らない。見せるときだけ、台本側で `false` にする（アプリは変えない）
+- 録画の操作バーは画面の隅（左下が空いていれば左下）、止めたあとの確認画面は画面の真ん中に出る。GIF は隅まで、確認画面は静止画で撮る
 - お知らせ（トースト）は約4秒で消える。台本の前に出たものは、消えるまで待ってから録る
 - 字幕の文字は日本語なので、`input.ps1` には番号（`echo CAP 3`）だけを通す（標準入力で日本語が化けるため）
 - `input.ps1` と `sheet.ps1` は ASCII だけで書く（日本語を入れるなら BOM 付き UTF-8）

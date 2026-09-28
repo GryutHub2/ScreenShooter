@@ -8,5 +8,5 @@ H.main('editor-calib', async (ctx) => {
   const E = await H.openInEditor(ctx, page, Number(ctx.arg('height', '720')))
   for (const sel of ['#btnAutoBlur', '#statusbar', '#favs', '#toolbar', '#privNotice']) H.log(sel, await E.el(sel))
   H.log('img', E.img, 'origin(phys)', E.at(0, 0))
-  await H.grab(E.ed.getBounds(), path.join(ctx.OUT, 'calib.png'))
+  await H.grab(E.ed.getContentBounds(), path.join(ctx.OUT, "calib.png"))
 })
