@@ -46,6 +46,7 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 | `highlight` | spot / zoom / marker（スポットライト・拡大鏡・蛍光ペン） | `--only` |
 | `scroll` | scroll（長いページのスクロール撮影）＋ out/scroll-result.png（できあがり） | なし |
 | `record` | record（録画の始め方〜停止。grabClip で撮る）＋ out/record-confirm.png（確認画面） | なし |
+| `words` | words（設定の「自動でぼかす言葉」に名前と正規表現を登録 →「自動ぼかし」。編集画面の右に設定画面を縮めて重ねる） | `--gifw=1000` |
 | `steps` | steps（番号マーカーを置く・Shift でそろえる・右クリックで消す） | なし |
 | `polish` | resize / finish（サイズ 50%・仕上げ「背景つき」と「見る」。編集画面の窓ごと録る） | `--only`、`--gifw=1000` |
 | `focus` | focus（集中モードに入る → 道具が出る → 解除。窓ごと録る） | `--gifw=1000` |
@@ -70,6 +71,7 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 - **範囲選択・スクロール撮影・録画を始めた瞬間の画面が、そのまま暗幕の絵になる。** 字幕と矢印が写り込むので、始める直前に `overlaysVisible(false)`、暗幕が出てから `true` に戻す。スクロール撮影の最中も矢印は隠す（1枚ずつに写り込んで、つなぎ目の判定を狂わせる）
 - 字幕はスクロール撮影が撮る範囲の外（ページの上の余白）に置く
 - 窓ごと録る場面は、字幕を絵・ダイアログに重ねない（窓の下の無地の帯か、下の帯の上）。下の帯の「仕上げ」のプルダウンは窓の下へはみ出して開くので、その分まで録る
+- 設定画面は上の節に保存先のパスが出る。写すのは「自動でぼかす言葉」の節まで送ってから。編集画面（最前面）と重ねるときは `setAlwaysOnTop(true, 'pop-up-menu')` で一段上に置く（同じ段だと、押したときに編集画面が前に来て、保存が押せない）
 - 集中モードは窓を作り直すので、新しい窓は最前面にならず無地の窓の下に隠れる。切り替わるたびに `setAlwaysOnTop(true)` で上げる（`focus` の `nextEditor()`）。空いた所に履歴パネルが写るので先に隠す
 - 録画の操作バーは `setContentProtection(true)` なので、`grabClip` では写らない。見せるときだけ、台本側で `false` にする（アプリは変えない）
 - 録画の操作バーは画面の隅（左下が空いていれば左下）、止めたあとの確認画面は画面の真ん中に出る。GIF は隅まで、確認画面は静止画で撮る

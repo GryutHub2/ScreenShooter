@@ -39,7 +39,7 @@ function boot(scene) {
 
   const MAIN = path.join(ROOT, 'main.js')
   const names = ['startRecording', 'stopRecording', 'closeRecordWindow', 'deleteEntry', 'notifyLibraryChanged',
-    'openPin', 'openEditor', 'fitContentBounds', 'libraryWin', 'editorWins', 'pinWins', 'DIFF_COLOR', 'DIFF_WIDTH', 'startRegionCapture', 'recording']
+    'openPin', 'openEditor', 'fitContentBounds', 'libraryWin', 'editorWins', 'pinWins', 'DIFF_COLOR', 'DIFF_WIDTH', 'startRegionCapture', 'recording', 'openSettings', 'settingsWin']
   const expose = names.map((n) => `get ${n}() { return typeof ${n} === 'undefined' ? null : ${n} }`).join(',\n')
   const mm = new Module(MAIN, module)
   mm.filename = MAIN
