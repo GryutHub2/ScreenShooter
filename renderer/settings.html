@@ -96,6 +96,12 @@
     （<code>\d</code> は数字1文字、<code>{9}</code> は9回。<code>\</code> は <code>¥</code> で打っても同じ）。
     桁数は<b>ちょうど</b>で数えます（<code>/PA\d{9}/</code> は PA1234567890 のような10桁には当たりません）。</p>
   <p class="warn" id="autoBlurBad" hidden></p>
+  <div class="row rowtop">
+    <label for="autoBlurLabels">見出しとして探す言葉</label>
+    <textarea id="autoBlurLabels" rows="4" spellcheck="false" placeholder="1行に1つ。Enter で改行して並べる（例：社員番号、紹介コード）"></textarea>
+  </div>
+  <p class="note">画面にこの言葉があると、<b>その右（または真下）にある値</b>をぼかします。値の形が決まっていないもの（社員番号・紹介コードなど）に使います。
+    「お名前」「氏名」「住所」「パスワード」「会員番号」などは、書かなくても最初から探します（ぼかしの強さが「標準」「強」のとき）。ここに書いた見出しは「弱」でも探します。</p>
 </section>
 
 <section>

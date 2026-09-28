@@ -35,6 +35,7 @@ function defaultSettings() {
     snapWindows: true,              // カーソルの下のウィンドウに枠を吸い付かせる
     autoBlur: true,                 // 撮ったあと、個人情報・APIキーらしい所に自動でぼかしを置く（録画は対象外）
     autoBlurWords: [],              // 自動でぼかす言葉（設定画面で1行1語。/…/ で囲んだ行は正規表現）
+    autoBlurLabels: [],             // 見出しとして探す言葉（この右か下の値をぼかす。lib/pii.js の JA_LABELS に足される）
     autoBlurLevel: 'normal',        // ぼかしの強さ（lib/pii.js の LEVELS）
     // 撮影履歴
     libraryLimit: 300,              // これを超えたら古いものから消す
@@ -2340,7 +2341,7 @@ ipcMain.handle('editor:findPrivate', async (e) => {
   let userName = ''
   try { userName = os.userInfo().username } catch (_) {}
   try {
-    return { boxes: findPrivateBoxes(ocr, { userName, words: settings.autoBlurWords, level: settings.autoBlurLevel }) }
+    return { boxes: findPrivateBoxes(ocr, { userName, words: settings.autoBlurWords, labels: settings.autoBlurLabels, level: settings.autoBlurLevel }) }
   } catch (err) {
     console.error('個人情報の検出に失敗:', err)
     return null
@@ -3173,6 +3174,14 @@ ipcMain.handle('settings:save', (e, patch) => {
       if (t && !words.includes(t)) words.push(t)
     }
     clean.autoBlurWords = words.slice(0, 300)
+  }
+  if (Array.isArray(patch.autoBlurLabels)) {
+    const labels = []
+    for (const w of patch.autoBlurLabels) {
+      const t = typeof w === 'string' ? w.trim().slice(0, 40) : ''
+      if (t && !labels.includes(t)) labels.push(t)
+    }
+    clean.autoBlurLabels = labels.slice(0, 100)
   }
   if (Number.isFinite(patch.libraryLimit)) clean.libraryLimit = Math.max(10, Math.min(5000, Math.round(patch.libraryLimit)))
   if (Number.isFinite(patch.libraryThumbHeight)) clean.libraryThumbHeight = Math.max(64, Math.min(240, Math.round(patch.libraryThumbHeight)))

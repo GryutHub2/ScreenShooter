@@ -76,7 +76,7 @@ const form = doc(`<style>
 </div>`, FORM_W, FORM_H)
 
 // 自動ぼかし用。値はすべて見本と分かるもの（example.com・見本の番号・でたらめのキー）。
-// 「お名前」は自動ぼかしが探さない見出しなので、手でぼかす例に使う
+// 「紹介コード」は自動ぼかしが探さない見出し・形なので、手でぼかす例と、設定に登録する例に使う
 const account = doc(`<style>
 dl{display:grid;grid-template-columns:120px 1fr;margin:0;background:#fff;font-size:16px}
 dt,dd{margin:0;padding:10px 14px;border-bottom:1px solid #e3e6eb}
@@ -89,9 +89,10 @@ dd.key{font-family:Consolas,monospace;font-size:14px}
   <dt>メール</dt><dd>hanako.yamada@example.com</dd>
   <dt>電話番号</dt><dd>090-1234-5678</dd>
   <dt>会員番号</dt><dd>A-00123456</dd>
+  <dt>紹介コード</dt><dd>KX-3391-07</dd>
   <dt>API キー</dt><dd class="key">sk-ant-api03-Qx7rT2mZ9vLp4Kw8Hn3Bd6YcR1</dd>
 </dl>
-<div class="btns"><button>閉じる</button><button class="primary">変更する</button></div></div>`, 600, 380)
+<div class="btns"><button>閉じる</button><button class="primary">変更する</button></div></div>`, 600, 420)
 
 // 目立たせる道具用。小さい版の番号（拡大鏡）・エラーの1行（蛍光ペン）・押してほしいボタン（スポットライト）
 const settings = doc(`<style>
@@ -170,7 +171,7 @@ html{overflow-y:scroll}body{overflow:visible;width:auto!important;height:auto!im
 <style>${NEWS.map(([, color], i) => `.tag[data-c="${i}"]{background:${color}}`).join('')}</style>`, LONG_W, LONG_H)
 
 const PNGS = {
-  'account': { html: account, w: 600, h: 380 },
+  'account': { html: account, w: 600, h: 420 },
   'settings': { html: settings, w: 600, h: 380 },
   'signup': { html: signup, w: 600, h: 380 },
   'form': { html: form, w: FORM_W, h: FORM_H },

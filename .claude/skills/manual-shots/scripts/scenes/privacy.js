@@ -9,8 +9,8 @@ const CAPS = {
   4: '足りない所は、ぼかし（B キー）で囲む',
 }
 
-// 絵の中の「山田 花子」（自動ぼかしが探さない「お名前」の値）
-const NAME = { x1: 142, y1: 56, x2: 228, y2: 90 }
+// 絵の中の「KX-3391-07」（自動ぼかしが探さない「紹介コード」の値）
+const CODE = { x1: 142, y1: 224, x2: 252, y2: 262 }
 
 H.main('privacy', async (ctx) => {
   const E = await H.openInEditor(ctx, 'account', 720)
@@ -37,8 +37,8 @@ H.main('privacy', async (ctx) => {
   if (close && close.width) await H.run([H.mv(H.phys(close.x + close.width / 2, close.y + close.height / 2), 400), 'click', 'wait 400'])
   await H.run([H.mv(rest, 300), 'wait 300'])
   await H.clip(ctx, 'blur-manual', R, [
-    'wait 300', H.cap(4), 'wait 500', 'key b', 'wait 400', H.mv(E.at(NAME.x1, NAME.y1), 800), 'wait 250',
-    'ldown', 'wait 100', H.mv(E.at(NAME.x2, NAME.y2), 900), 'wait 150', 'lup', 'wait 1400',
+    'wait 300', H.cap(4), 'wait 500', 'key b', 'wait 400', H.mv(E.at(CODE.x1, CODE.y1), 800), 'wait 250',
+    'ldown', 'wait 100', H.mv(E.at(CODE.x2, CODE.y2), 900), 'wait 150', 'lup', 'wait 1400',
     H.mv(rest, 600), 'wait 1200', 'echo CAPOFF', 'wait 300',
   ])
   E.ed.setAlwaysOnTop(false)

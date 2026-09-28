@@ -46,7 +46,7 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 | `highlight` | spot / zoom / marker（スポットライト・拡大鏡・蛍光ペン） | `--only` |
 | `scroll` | scroll（長いページのスクロール撮影）＋ out/scroll-result.png（できあがり） | なし |
 | `record` | record（録画の始め方〜停止。grabClip で撮る）＋ out/record-confirm.png（確認画面） | なし |
-| `words` | words（設定の「自動でぼかす言葉」に名前と正規表現を登録 →「自動ぼかし」。編集画面の右に設定画面を縮めて重ねる） | `--gifw=1000` |
+| `words` | `--kind=regex`：words（「自動でぼかす言葉」に正規表現）／`--kind=label`：labels（「見出しとして探す言葉」に「紹介コード」）。どちらも登録 →「自動ぼかし」で紹介コードがぼける。編集画面の右に設定画面を縮めて重ねる | `--kind`、`--gifw=1000` |
 | `steps` | steps（番号マーカーを置く・Shift でそろえる・右クリックで消す） | なし |
 | `polish` | resize / finish（サイズ 50%・仕上げ「背景つき」と「見る」。編集画面の窓ごと録る） | `--only`、`--gifw=1000` |
 | `focus` | focus（集中モードに入る → 道具が出る → 解除。窓ごと録る） | `--gifw=1000` |

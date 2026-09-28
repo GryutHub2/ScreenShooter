@@ -17,6 +17,7 @@ const gifWidthEl = document.getElementById('gifWidth')
 const recAudioEl = document.getElementById('recAudio')
 const autoBlurEl = document.getElementById('autoBlur')
 const autoBlurWordsEl = document.getElementById('autoBlurWords')
+const autoBlurLabelsEl = document.getElementById('autoBlurLabels')
 const autoBlurLevelEl = document.getElementById('autoBlurLevel')
 const autoBlurBadEl = document.getElementById('autoBlurBad')
 const warnEl = document.getElementById('warn')
@@ -27,7 +28,7 @@ const current = {
   sendToMenu: false,
   libraryLimit: 300, snapWindows: true, libraryThumbHeight: 104,
   recordFps: 15, gifFps: 10, gifMaxWidth: 0, recordAudio: true,
-  autoBlur: true, autoBlurWords: [], autoBlurLevel: 'normal',
+  autoBlur: true, autoBlurWords: [], autoBlurLabels: [], autoBlurLevel: 'normal',
 }
 
 // 欄と、その欄が持っている設定名の対応
@@ -107,6 +108,9 @@ function render() {
   // 打っている途中の空行や前後の空白を消さないよう、中身が同じなら書き戻さない
   if (wordsOf(autoBlurWordsEl.value).join('\n') !== current.autoBlurWords.join('\n')) {
     autoBlurWordsEl.value = current.autoBlurWords.join('\n')
+  }
+  if (wordsOf(autoBlurLabelsEl.value).join('\n') !== current.autoBlurLabels.join('\n')) {
+    autoBlurLabelsEl.value = current.autoBlurLabels.join('\n')
   }
 }
 
@@ -194,6 +198,7 @@ document.getElementById('btnSave').addEventListener('click', async () => {
   current.recordAudio = recAudioEl.checked
   current.autoBlur = autoBlurEl.checked
   current.autoBlurWords = wordsOf(autoBlurWordsEl.value)
+  current.autoBlurLabels = wordsOf(autoBlurLabelsEl.value)
   current.autoBlurLevel = autoBlurLevelEl.value
   const r = await window.api.invoke('settings:save', current)
   if (r && r.failed && r.failed.length) {
@@ -235,6 +240,9 @@ autoBlurWordsEl.addEventListener('input', () => {
   current.autoBlurWords = wordsOf(autoBlurWordsEl.value)
   showBadPatterns()
 })
+autoBlurLabelsEl.addEventListener('input', () => {
+  current.autoBlurLabels = wordsOf(autoBlurLabelsEl.value)
+})
 
 document.getElementById('btnClose').addEventListener('click', () => {
   window.api.send('app:closeWindow')
@@ -260,6 +268,7 @@ window.api.invoke('settings:get').then((s) => {
   current.recordAudio = s.recordAudio !== false
   current.autoBlur = s.autoBlur !== false
   current.autoBlurWords = Array.isArray(s.autoBlurWords) ? s.autoBlurWords.filter((w) => typeof w === 'string') : []
+  current.autoBlurLabels = Array.isArray(s.autoBlurLabels) ? s.autoBlurLabels.filter((w) => typeof w === 'string') : []
   current.autoBlurLevel = ['low', 'normal', 'high'].includes(s.autoBlurLevel) ? s.autoBlurLevel : 'normal'
   render()
 })
