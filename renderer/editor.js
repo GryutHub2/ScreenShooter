@@ -2575,6 +2575,7 @@ async function doCopy() {
 //   書き込みがあるとき … 焼いた絵を「_書き込み.png」として別に出す（元の絵はそのまま）
 //   名前を付けるとき   … 元の絵をその名前へ動かす（増やさない）
 // 済んだらそのまま閉じる。失敗・名前のダイアログをやめたときは、やり直せるように閉じない。
+// 保存できたときは、本体が Ctrl+C と同じ絵をクリップボードにも入れている（r.copied）。
 async function doSave(saveAs) {
   commitText()
   flushLibrary()
@@ -2590,6 +2591,8 @@ async function doSave(saveAs) {
 
   state.dirty = false
   if (r.moved) state.savedPath = r.path
+  // 保存は済んでいるので、コピーだけ失敗したときは閉じずに知らせる（閉じるとお知らせが見えない）。押し直せばよい
+  if (!r.copied) { toast('保存はできましたが、クリップボードへのコピーに失敗しました'); return }
   // 書き込みが無いときは撮った時のファイルがそのまま残っているので、閉じるだけでよい
   requestClose()
 }

@@ -1793,7 +1793,16 @@ ipcMain.handle('app:savePiece', async (e, data) => {
 //   書き込み無し・名前を付けて … 原本をその名前へ動かす（コピーしない＝増やさない）
 //   書き込みあり            … 焼いた絵を「_書き込み.png」として別に出す（原本は残す）。仕上げだけのときもこちら
 // 原本を潰さないのは、あとから矢印や文字を動かし直せるようにしておくため。
+// 保存できたら、いつも Ctrl+C を押してから保存していたので、同じ最終の絵をクリップボードにも入れる
+// （閉じたあとそのまま貼れる。名前のダイアログをやめた・保存に失敗したときは入れない）。
+// 中身を saveImage に分けたのは、ここで dataUrl を二度 IPC で渡さずに済ませるため。
 ipcMain.handle('app:save', async (e, data) => {
+  const r = await saveImage(e, data)
+  if (r && r.ok) r.copied = copyImage(data.dataUrl).ok
+  return r
+})
+
+async function saveImage(e, data) {
   const win = BrowserWindow.fromWebContents(e.sender)
   const meta = data.libraryId ? readEntry(data.libraryId) : null
   const edited = !!data.edited
@@ -1862,16 +1871,21 @@ ipcMain.handle('app:save', async (e, data) => {
     refreshEditorTitle(meta.id)
   }
   return { ok: true, path: target, edited }
-})
+}
 
-ipcMain.handle('app:copy', (e, dataUrl) => {
+function copyImage(dataUrl) {
   try {
-    clipboard.writeImage(nativeImage.createFromDataURL(dataUrl))
+    const img = nativeImage.createFromDataURL(dataUrl)
+    // 大きすぎて画面側の toDataURL が失敗すると空の絵が来る。書き込みは黙って何もしないので、ここで失敗にする
+    if (img.isEmpty()) return { ok: false, error: 'empty image' }
+    clipboard.writeImage(img)
     return { ok: true }
   } catch (err) {
     return { ok: false, error: String(err) }
   }
-})
+}
+
+ipcMain.handle('app:copy', (e, dataUrl) => copyImage(dataUrl))
 
 ipcMain.on('app:reveal', (e, filePath) => {
   if (filePath && fs.existsSync(filePath)) shell.showItemInFolder(filePath)
