@@ -90,7 +90,7 @@ dd.key{font-family:Consolas,monospace;font-size:14px}
   <dt>電話番号</dt><dd>090-1234-5678</dd>
   <dt>会員番号</dt><dd>A-00123456</dd>
   <dt>紹介コード</dt><dd>KX-3391-07</dd>
-  <dt>API キー</dt><dd class="key">sk-ant-api03-Qx7rT2mZ9vLp4Kw8Hn3Bd6YcR1</dd>
+  <dt>API キー</dt><dd class="key">sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</dd>
 </dl>
 <div class="btns"><button>閉じる</button><button class="primary">変更する</button></div></div>`, 600, 420)
 
