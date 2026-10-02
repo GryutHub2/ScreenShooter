@@ -1,4 +1,4 @@
-﻿# デスクトップとスタートメニューに「スクショ」の起動ショートカットを作る。
+﻿# デスクトップとスタートメニューに「ScreenShooter」の起動ショートカットを作る。
 # exe を作らず、electron.exe にプロジェクトフォルダを渡す形にしている（ビルド不要・SAC に止められない）。
 #
 #   powershell -ExecutionPolicy Bypass -File tools\make-shortcut.ps1
@@ -16,8 +16,8 @@ if (-not (Test-Path $exe)) {
 }
 
 $targets = @(
-  (Join-Path ([Environment]::GetFolderPath('Desktop')) 'スクショ.lnk'),
-  (Join-Path ([Environment]::GetFolderPath('Programs')) 'スクショ.lnk')
+  (Join-Path ([Environment]::GetFolderPath('Desktop')) 'ScreenShooter.lnk'),
+  (Join-Path ([Environment]::GetFolderPath('Programs')) 'ScreenShooter.lnk')
 )
 
 $shell = New-Object -ComObject WScript.Shell
@@ -26,7 +26,7 @@ foreach ($path in $targets) {
   $sc.TargetPath = $exe
   $sc.Arguments = '"' + $proj + '"'
   $sc.WorkingDirectory = $proj
-  $sc.Description = 'スクショ — 範囲を選んで撮り、赤枠や矢印を書き込む'
+  $sc.Description = 'ScreenShooter — 範囲を選んで撮り、赤枠や矢印を書き込む'
   if (Test-Path $icon) { $sc.IconLocation = $icon }
   $sc.Save()
   Write-Output "作成: $path"

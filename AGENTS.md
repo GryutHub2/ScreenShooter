@@ -1,7 +1,7 @@
-# スクショ — 変更時の注意
+# ScreenShooter — 変更時の注意
 
 - 起動はソース直実行（ショートカットが `node_modules/electron/dist/electron.exe` にこのフォルダを渡す）。ビルド不要。exe 化はしない（このPCは Smart App Control がオン）。
-- IMPORTANT: **自動起動はアプリで面倒を見ない**（2026-09-13 ユーザー決定）。スタートアップ フォルダの `スクショ.lnk` はユーザーが手で置く。**アプリから作る・消すコードを足さない**（設定のチェック1つで、置いたショートカットを消してしまう事故があったため）。設定画面にも項目を作らない。
+- IMPORTANT: **自動起動はアプリで面倒を見ない**（2026-09-13 ユーザー決定）。スタートアップ フォルダの `ScreenShooter.lnk`（旧名の `スクショ.lnk` のままでも動く）はユーザーが手で置く。**アプリから作る・消すコードを足さない**（設定のチェック1つで、置いたショートカットを消してしまう事故があったため）。設定画面にも項目を作らない。
 - 自動起動をレジストリの `Run` で実現しない。デスクトップ（explorer）より先に走るので、**トレイ常駐のこのアプリは出てこないことがある**（実際に再起動で起動しなかった）。スタートアップ フォルダの `.lnk` だけを使う。
 - ショートカットに渡すフォルダ名には**空白が入る**（`Claude Code`）。`args` は自分で二重引用符で囲む。囲まないと `C:\Users\<ユーザー名>\Claude` を渡したことになって空ウィンドウが出る。
 - **単一インスタンス**。直したらトレイの「終了」で終わらせてから起動し直す。起動中のプロセスには反映されず、2つ目を起動しても撮影が始まるだけ。入れ替わったかは `electron.exe` の起動時刻（`Win32_Process` の `CreationDate`）で確かめる。
@@ -53,7 +53,7 @@
 - 履歴からのコピー（Ctrl+C・右クリック）は `copyFromLibrary()` だけを通す。書き込み・切り抜きのある絵と、仕上げが「そのまま」以外のときは、見えない編集画面（`exportOnly`）に `exportPNG()` させる。描き方を main 側に真似て書かない。
 - 履歴フォルダの削除は `lib/store.js` の `remove()` だけを通す。**ID の形（`20260910-014233-a7f3`）に一致し、かつ `meta.json` を持つフォルダ**しか消さない。ここを緩めると、ユーザーが library に置いた別のフォルダを巻き添えにする。
 - 外の画像の取り込みは `importImage()` だけを通す。保存先へコピーしてから履歴に入れ、`meta.source` に取り込み元を残す（同じ絵を何度渡しても増やさないため）。保存先の中にある絵はコピーしない。
-- 「送る」は `%APPDATA%\Microsoft\Windows\SendTo\スクショで開く.lnk` 1個で実現する（レジストリは使わない）。`args` は `"<ROOT>"` だけで、選んだファイルのパスはシェルが後ろに足す。`imagePathsFrom()` が拾う。
+- 「送る」は `%APPDATA%\Microsoft\Windows\SendTo\ScreenShooterで開く.lnk` 1個で実現する（レジストリは使わない）。`args` は `"<ROOT>"` だけで、選んだファイルのパスはシェルが後ろに足す。`imagePathsFrom()` が拾う。
 - 落とされたファイルの実パスは preload の `filePath()`（`webUtils.getPathForFile`）で取る。Electron 32 で `File.path` が無くなったので、`file.path` は空になる。
 - IMPORTANT: 集中モード（枠なし・絵だけ）は**ウィンドウを作り直して**切り替える。Windows は開いたあとのウィンドウから枠だけを外せない。図形・切り抜き・道具は画面側が `carry` に入れて渡す（`editor:focus`）。undo の履歴だけは引き継がない。
 - 集中モードの窓は `setAspectRatio()` → `setContentSize()` の順に呼ぶ。逆だと比の補正で中身が 1px 削られ、絵との間に隙間が出る。
@@ -76,7 +76,7 @@
 - IMPORTANT: ホイールを送る前に **`mouse_event` で実際の移動を1つ流し込む**（`MoveCursor`）。`SetCursorPos` だけだと「カーソルの下の窓」の判定が更新されず、**暗幕を閉じた直後は消えた窓を指したままになってホイールがどこにも届かない**。実測で、カーソルが動いていない状態では必ず失敗した。
 - スクロールの歩幅は **1目盛りから始めて実測してから広げる**。いきなり大きく送ると重なりが消えて継ぎ目を見失う。見失ったら同じだけ戻して半分の歩幅で再挑戦する。
 - 撮る前に `captureStable()` で画面が止まるのを待つ。なめらかスクロールの途中で撮ると、ずれを小さく誤検出し、そのあと歩幅が過大になって破綻する。
-- スクロール撮影の経過は `%APPDATA%\スクショ\scroll-log.txt` に残る（毎回上書き）。失敗の原因が「送りすぎ」か「動かない」かはここを見る。
+- スクロール撮影の経過は `%APPDATA%\ScreenShooter\scroll-log.txt` に残る（毎回上書き）。失敗の原因が「送りすぎ」か「動かない」かはここを見る。
 - つなぎ目の検出（`lib/stitch.js`）は、画面の**上下の端を使わない**帯で比べる。上に貼り付いたヘッダー・下に貼り付いたボタンは動かないので、そこを使うと必ず「動いていない」と誤判定する。
 - 手がかりが無い（真っ白など）ときは繋がずに止める。当てずっぽうで繋ぐと、ずれた絵が黙って出来上がる。
 - 進行状況の窓は撮る範囲に重ならない場所に出す。重なると写り込む。置けないときは出さない。
@@ -84,6 +84,7 @@
 - 吸い付き用のスキャンは自分のプロセスIDのウィンドウを除いている（撮影用の暗幕を掴まないため）。副作用として、このアプリの編集画面・履歴パネル・浮かせた絵には吸い付かない。
 - モニタと Electron の画面の対応が取れないとき（大きさが合わない・数が違う）は、`lib/snap.js` が `null` を返して吸い付きを諦める。**推測で対応させない**（違う場所に枠が出るくらいなら機能を切るほうがまし）。
 - `settings.json` は **BOM 無し** UTF-8 で書く。BOM が付くと `JSON.parse` が失敗し、黙って既定値に戻る（＝ホットキーが既定に戻って他アプリと衝突する）。
+- IMPORTANT: `package.json` の `productName` を変えると userData（`%APPDATA%\<名前>`）も変わり、**設定と履歴が消えたように見える**。旧名「スクショ」からの引っ越しは `lib/migrate.js` が `requestSingleInstanceLock()` より前に1回だけ行う（済んだ印は settings.json の `renamedFrom`。消すと保存先の絵をまた動かす）。また名前を変えるなら、ここも合わせて直す。
 - 動作確認の起動は `--user-data-dir` に使い捨てフォルダを渡す（本番の設定を書き換えないため）。
 - 検証用の Electron スクリプトでは `app.on('window-all-closed', () => {})` を必ず入れる。入れないと1つ目のウィンドウを閉じた時点でアプリが終了し、次の `loadFile` が `ERR_FAILED` になる。
 - `npm install` で Electron 本体が落ちてこないことがある（`node_modules/electron/dist` が空）。そのときは `node node_modules\electron\install.js`。
@@ -145,13 +146,13 @@
 
 | 名前 | 値 |
 |---|---|
-| 設定ファイル | `%APPDATA%\スクショ\settings.json` |
-| 撮影履歴 | `%APPDATA%\スクショ\library\<id>\`（`thumb.png` / `meta.json` のみ。原寸の絵は持たない） |
+| 設定ファイル | `%APPDATA%\ScreenShooter\settings.json` |
+| 撮影履歴 | `%APPDATA%\ScreenShooter\library\<id>\`（`thumb.png` / `meta.json` のみ。原寸の絵は持たない） |
 | 録画の履歴 | 同じ場所に `thumb.png` / `meta.json` のみ。動画と GIF は保存先フォルダ |
-| 保存先（既定） | `%USERPROFILE%\Pictures\スクショ`。撮った瞬間にここへ入る |
+| 保存先（既定） | `%USERPROFILE%\Pictures\ScreenShooter`。撮った瞬間にここへ入る |
 | 既定のホットキー | `Ctrl+Shift+S`（範囲選択） |
-| 自動起動 | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\スクショ.lnk`（`shell:startup` で開ける）。**ユーザーが手で置く。アプリは触らない** |
-| 「送る」メニュー | `%APPDATA%\Microsoft\Windows\SendTo\スクショで開く.lnk`（`shell:sendto` で開ける。設定でオンにしたときだけ作る） |
+| 自動起動 | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\ScreenShooter.lnk`（`shell:startup` で開ける。旧名の `スクショ.lnk` のままでもよい）。**ユーザーが手で置く。アプリは触らない** |
+| 「送る」メニュー | `%APPDATA%\Microsoft\Windows\SendTo\ScreenShooterで開く.lnk`（`shell:sendto` で開ける。設定でオンにしたときだけ作る） |
 | Windows がブロックした記録 | イベントログ `Microsoft-Windows-CodeIntegrity/Operational`（Id 3077 がブロック。ポリシー名 `VerifiedAndReputableDesktop` = Smart App Control） |
-| スクロール撮影の記録 | `%APPDATA%\スクショ\scroll-log.txt`（毎回上書き） |
-| 失敗時に残る2枚 | `%APPDATA%\スクショ\scroll-debug\`（1-スクロール前.png / 2-スクロール後.png） |
+| スクロール撮影の記録 | `%APPDATA%\ScreenShooter\scroll-log.txt`（毎回上書き） |
+| 失敗時に残る2枚 | `%APPDATA%\ScreenShooter\scroll-debug\`（1-スクロール前.png / 2-スクロール後.png） |

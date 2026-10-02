@@ -23,7 +23,7 @@ H.main('shapes', async (ctx) => {
   const { A, WORK, STAGE, OUT, arg } = ctx
   const MODE = arg('mode', 'record')
 
-  const src = path.join(STAGE, 'スクショ_2026-09-28_103000.png')
+  const src = path.join(STAGE, 'ScreenShooter_2026-09-28_103000.png')
   fs.copyFileSync(path.join(WORK, 'dummy', '3-after.png'), src)
   app.emit('second-instance', {}, [process.execPath, src], STAGE)
   const ed = await H.waitFor(() => H.byUrl('editor.html')[0], 15000)

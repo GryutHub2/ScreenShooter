@@ -276,7 +276,7 @@ async function makeBackdrop(rectDip, color) {
 // 返す at(x, y) は「絵の座標 → 画面の実ピクセル」、img は絵が見えている四角（DIP）、el(sel) は画面の部品の四角（DIP）
 async function openInEditor(ctx, name, height) {
   const { app, screen: scr } = require('electron')
-  const src = path.join(ctx.STAGE, 'スクショ_2026-09-28_' + name + '.png')
+  const src = path.join(ctx.STAGE, 'ScreenShooter_2026-09-28_' + name + '.png')
   fs.copyFileSync(path.join(ctx.WORK, 'dummy', name + '.png'), src)
   app.emit('second-instance', {}, [process.execPath, src], ctx.STAGE)
   const ed = await waitFor(() => byUrl('editor.html')[0], 15000)

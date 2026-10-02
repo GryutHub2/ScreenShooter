@@ -23,7 +23,7 @@ H.main('before-after', async (ctx) => {
   const { A, UD, STAGE, OUT, WORK, arg } = ctx
   const MODE = arg('mode', 'record')
   // 古い順に取り込む（履歴パネルは新しい順に並ぶので、右から やること・前・後 の逆になる）
-  const names = [['1-todo', 'スクショ_2026-09-28_101200'], ['2-before', 'スクショ_2026-09-28_101500'], ['3-after', 'スクショ_2026-09-28_103000']]
+  const names = [['1-todo', 'ScreenShooter_2026-09-28_101200'], ['2-before', 'ScreenShooter_2026-09-28_101500'], ['3-after', 'ScreenShooter_2026-09-28_103000']]
   for (const [src, dst] of names) {
     const p = path.join(STAGE, dst + '.png')
     fs.copyFileSync(path.join(WORK, 'dummy', src + '.png'), p)

@@ -1,6 +1,6 @@
 {
   "name": "sukusho",
-  "productName": "スクショ",
+  "productName": "ScreenShooter",
   "version": "1.0.0",
   "description": "範囲を選んで撮り、その場で赤枠・矢印・赤文字を書き込めるスクリーンショットツール",
   "license": "MIT",

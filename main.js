@@ -14,6 +14,7 @@ const { mapMonitors, convertRects } = require('./lib/snap')
 const { rowHashes, findShift, compose, sameRatio } = require('./lib/stitch')
 const { findDiffBoxes } = require('./lib/diff')
 const { findPrivateBoxes, LEVELS: BLUR_LEVELS } = require('./lib/pii')
+const { migrateFromOldName, OLD_NAME } = require('./lib/migrate')
 
 const ROOT = __dirname
 const ASSETS = path.join(ROOT, 'assets')
@@ -30,8 +31,8 @@ function defaultSettings() {
     hotkeyRecord: '',               // 録画する（空 = 割り当てなし）
     hotkeyRepeat: '',               // 前回と同じ範囲で撮る（空 = 割り当てなし。他アプリとの衝突を避けるため既定は空）
     lastRegion: null,               // 前回、範囲選択で撮った場所（rememberRegion が書く）
-    saveDir: path.join(app.getPath('pictures'), 'スクショ'),
-    sendToMenu: false,              // 右クリックの「送る」に「スクショで開く」を出す
+    saveDir: path.join(app.getPath('pictures'), 'ScreenShooter'),
+    sendToMenu: false,              // 右クリックの「送る」に「ScreenShooterで開く」を出す
     snapWindows: true,              // カーソルの下のウィンドウに枠を吸い付かせる
     autoBlur: true,                 // 撮ったあと、個人情報・APIキーらしい所に自動でぼかしを置く（録画は対象外）
     autoBlurWords: [],              // 自動でぼかす言葉（設定画面で1行1語。/…/ で囲んだ行は正規表現）
@@ -103,7 +104,7 @@ function saveSettings(patch) {
 
 // ---------------------------------------------------------------- 撮影履歴（ライブラリ）
 //
-// 1件 = 1フォルダ。%APPDATA%\スクショ\library\<id>\ に
+// 1件 = 1フォルダ。%APPDATA%\ScreenShooter\library\<id>\ に
 //   original.png … 書き込む前の元画像
 //   thumb.png    … 一覧用の小さい絵（書き込み後の見た目）
 //   meta.json    … 図形・切り抜き・保存先
@@ -135,7 +136,7 @@ function makeThumb(image) {
     : image.resize({ height: THUMB_STORE_H, quality: 'good' })
 }
 
-// 撮った絵は、その場で保存先フォルダ（既定は ピクチャ\スクショ）に置く。
+// 撮った絵は、その場で保存先フォルダ（既定は ピクチャ\ScreenShooter）に置く。
 // 履歴はそのファイルを指すだけで、原寸のコピーは持たない（同じ絵を2箇所に置かないため）。
 // 保存先に書けなかったときだけ、履歴の中の original.png に逃がす。
 // region は範囲選択で撮ったときだけ付く（同じ範囲で撮った2枚を見分けるため）
@@ -573,7 +574,7 @@ function noticeBlocked(label, why) {
   lastBlockNotice = now
   dialog.showMessageBox({
     type: 'warning',
-    title: 'スクショ',
+    title: 'ScreenShooter',
     message: label + 'を開けませんでした',
     detail: '窓の枠は出たのに中身が真っ白なときは、Windows の保護機能'
       + '「スマート アプリ コントロール」が、このアプリの中身を描く部分の起動を止めたのが原因です。'
@@ -1176,7 +1177,7 @@ function scrollNotice(message, detail, withFrames) {
     : ['OK', '詳しい記録を開く']
   dialog.showMessageBox({
     type: 'info',
-    title: 'スクショ',
+    title: 'ScreenShooter',
     message,
     detail,
     buttons,
@@ -1227,7 +1228,7 @@ function showProgress(text, display, crop) {
     show: false, frame: false, resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true, backgroundColor: '#23262b',
-    title: 'スクショ — 実行中',
+    title: 'ScreenShooter — 実行中',
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false },
   })
   progressWin.setMenu(null)
@@ -1246,7 +1247,7 @@ let progressText = ''
 
 function setProgress(text) {
   progressText = text
-  if (tray) tray.setToolTip('スクショ — ' + text)
+  if (tray) tray.setToolTip('ScreenShooter — ' + text)
   if (progressWin && !progressWin.isDestroyed()) progressWin.webContents.send('progress:text', text)
 }
 
@@ -1273,7 +1274,7 @@ function startDelayedCapture(seconds) {
       startRegionCapture('region')
       return
     }
-    if (tray) tray.setToolTip('スクショ — あと ' + left + ' 秒で撮ります')
+    if (tray) tray.setToolTip('ScreenShooter — あと ' + left + ' 秒で撮ります')
     left--
   }
   tick()
@@ -1320,7 +1321,7 @@ function startRecording(display, crop) {
     show: false, frame: false, resizable: false,
     minimizable: false, maximizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true, backgroundColor: '#23262b',
-    title: 'スクショ — 録画',
+    title: 'ScreenShooter — 録画',
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -1560,7 +1561,7 @@ function watchFocusCursor() {
 function setEditorTitle(win, meta) {
   if (!win || win.isDestroyed()) return
   const name = displayName(meta)
-  win.setTitle(name ? name + ' — スクショ' : 'スクショ — 編集')
+  win.setTitle(name ? name + ' — ScreenShooter' : 'ScreenShooter — 編集')
   // タイトルバーは画面側で自作しているので、同じ文字をそちらにも出す
   if (!win.webContents.isDestroyed()) win.webContents.send('editor:title', win.getTitle())
 }
@@ -1685,7 +1686,7 @@ function openEditor(image, meta, opts) {
     }),
     show: false,
     backgroundColor: '#23262b',
-    title: 'スクショ — 編集',
+    title: 'ScreenShooter — 編集',
     icon: path.join(ASSETS, 'app.ico'),
     webPreferences: {
       preload: PRELOAD,
@@ -1766,7 +1767,7 @@ function openEditorFromLibrary(id) {
 function timestampFrom(ms) {
   const d = new Date(ms)
   const p = (n) => String(n).padStart(2, '0')
-  return 'スクショ_' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+  return 'ScreenShooter_' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
     + '_' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds())
 }
 
@@ -2439,7 +2440,7 @@ function ensureLibraryWindow() {
     skipTaskbar: true,
     alwaysOnTop: true,
     backgroundColor: '#2c3037',
-    title: 'スクショ — 履歴パネル',
+    title: 'ScreenShooter — 履歴パネル',
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -2905,7 +2906,7 @@ function openPin(image, meta, off) {
     alwaysOnTop: true,
     enableLargerThanScreen: true,
     backgroundColor: '#23262b',
-    title: 'スクショ — 浮かせた絵',
+    title: 'ScreenShooter — 浮かせた絵',
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -3150,7 +3151,7 @@ function openSettings() {
     resizable: false,
     show: false,
     backgroundColor: '#23262b',
-    title: 'スクショ — 設定',
+    title: 'ScreenShooter — 設定',
     icon: path.join(ASSETS, 'app.ico'),
     webPreferences: {
       preload: PRELOAD,
@@ -3258,20 +3259,24 @@ function applyHotkeys() {
 }
 
 // IMPORTANT: 自動起動はアプリで面倒を見ない（2026-09-13 ユーザー判断）。
-// スタートアップ フォルダの `スクショ.lnk` はユーザーが自分で置く。
+// スタートアップ フォルダの起動ショートカット（古い名前の `スクショ.lnk` のままでも動く）はユーザーが自分で置く。
 // アプリ側から作る・消すを一切しないので、書くコードもここには無い
 // （置きっぱなしのショートカットを設定のチェック1つで消してしまう事故を無くすため）。
 // ひな形が要るときは tools\make-shortcut.ps1 で作る。
 
 // 右クリックの「送る」に出すショートカット。レジストリは触らず、ファイルを1個置くだけ。
 // 「送る」で選んだファイルのパスは、この args の後ろに足されて渡ってくる（imagePathsFrom で拾う）
-function sendToLinkPath() {
-  return path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'SendTo', 'スクショで開く.lnk')
+function sendToLinkPath(name) {
+  return path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'SendTo', (name || app.getName()) + 'で開く.lnk')
 }
 
+// 起動のたびにも呼ぶ。アプリの名前・フォルダが変わっても、作り直して今の場所を指させるため
 function applySendTo() {
   const link = sendToLinkPath()
   try {
+    // 旧い名前で作ったもの（このアプリが作ったもの）は消す。オンなら新しい名前で作り直す
+    const old = sendToLinkPath(OLD_NAME)
+    if (fs.existsSync(old)) fs.rmSync(old, { force: true })
     if (!settings.sendToMenu) {
       if (fs.existsSync(link)) fs.rmSync(link, { force: true })
       return
@@ -3284,7 +3289,7 @@ function applySendTo() {
       cwd: ROOT,
       icon: path.join(ASSETS, 'app.ico'),
       iconIndex: 0,
-      description: 'スクショで開く',
+      description: app.getName() + 'で開く',
     })
   } catch (err) {
     console.error('「送る」への登録に失敗:', err)
@@ -3296,7 +3301,7 @@ function applySendTo() {
 let tray = null
 
 function trayTooltip() {
-  return 'スクショ — クリックで履歴パネル'
+  return 'ScreenShooter — クリックで履歴パネル'
     + (settings.hotkeyRegion ? '（撮るのは ' + settings.hotkeyRegion + '）' : '')
 }
 
@@ -3377,7 +3382,7 @@ function ensureTrayMenuWin(onReady) {
     width: 300, height: 200, show: false, frame: false, resizable: false,
     movable: false, minimizable: false, maximizable: false, fullscreenable: false,
     skipTaskbar: true, alwaysOnTop: true, backgroundColor: '#2b2d31',
-    title: 'スクショ — メニュー',
+    title: 'ScreenShooter — メニュー',
     // 隠して使い回すので、隠れている間も処理を止めさせない
     webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
   })
@@ -3441,12 +3446,13 @@ function buildTray() {
 // ---------------------------------------------------------------- 起動
 
 function showError(message, detail) {
-  dialog.showMessageBox({ type: 'error', title: 'スクショ', message, detail: detail || '' })
+  dialog.showMessageBox({ type: 'error', title: 'ScreenShooter', message, detail: detail || '' })
 }
 
 function init() {
   loadSettings()
   lib().ensure()
+  applySendTo()
   // 画面の取り込みを許可する係。ここを付けないと録画の要求が全部断られる。
   // 録画したい画面をこちらで決めるので、選択ダイアログは出さない。
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
@@ -3471,7 +3477,7 @@ function init() {
     const list = failed.map((f) => '・' + f.label + '： ' + f.accel).join('\n')
     dialog.showMessageBox({
       type: 'warning',
-      title: 'スクショ',
+      title: 'ScreenShooter',
       message: 'ショートカットキーを登録できませんでした',
       detail: list + '\n\n他のアプリ（ScreenPresso など）が同じキーを使っている可能性があります。'
         + '\nタスクトレイのアイコンを右クリック →「設定…」で別のキーに変えられます。',
@@ -3479,6 +3485,27 @@ function init() {
   }
 
   if (settings.libraryPinned) showLibrary(false)
+
+  if (migration && migration.errors.length) {
+    showError('「' + OLD_NAME + '」からの引っ越しで、一部を移せませんでした',
+      migration.errors.slice(0, 10).join('\n')
+      + '\n\n移せなかった絵は元のフォルダ（ピクチャ\\' + OLD_NAME + '）に残っていて、履歴からはそのまま開けます。')
+  }
+}
+
+// 名前を「スクショ」から変えたので、旧い userData と保存先から引っ越す（済んでいれば何もしない）。
+// userData を使うもの（requestSingleInstanceLock も）より前に済ませる。
+// --user-data-dir を付けた試運転では、本物を写さないよう動かさない
+let migration = null
+if (path.resolve(app.getPath('userData')).toLowerCase()
+  === path.resolve(app.getPath('appData'), app.getName()).toLowerCase()) {
+  migration = migrateFromOldName({
+    appData: app.getPath('appData'),
+    userData: app.getPath('userData'),
+    pictures: app.getPath('pictures'),
+    newName: app.getName(),
+  })
+  if (migration.errors.length) console.error('引っ越しの失敗:', migration.errors)
 }
 
 // トレイ常駐アプリなので二重起動させない。

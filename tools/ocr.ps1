@@ -1,6 +1,6 @@
 ﻿# 画像に写っている文字を、Windows 標準の文字読み取り（Windows.Media.Ocr）で読んで JSON で1行返す。
 #
-#   powershell -NoProfile -ExecutionPolicy Bypass -File tools\ocr.ps1 -Path "C:\...\スクショ_2026-09-27_101500.png"
+#   powershell -NoProfile -ExecutionPolicy Bypass -File tools\ocr.ps1 -Path "C:\...\ScreenShooter_2026-09-27_101500.png"
 #
 # 返すのは「エンジン × 倍率」ごとの、行 → 単語（文字と、元の絵の実ピクセルでの位置）。
 # 日本語エンジンは英数字を崩し（\ を * に化かす）、英語エンジンは行ごと落とすことがあるので両方で読む。
