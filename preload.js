@@ -8,7 +8,7 @@ const RECEIVE = [
   'overlay:init', 'overlay:rects',
   'editor:init', 'editor:title', 'editor:requestClose', 'editor:ui', 'editor:stylePresets', 'editor:addShapes', 'editor:toast',
   'ocr:init',
-  'library:items', 'library:toast', 'library:editInfo',
+  'library:items', 'library:toast', 'library:editInfo', 'library:showMenu',
   'progress:text',
   'countdown:tick',
   'traymenu:init',
@@ -22,7 +22,7 @@ const SEND = [
   'editor:focus', 'editor:aspect', 'editor:exported', 'editor:retake', 'editor:pin', 'editor:backgroundDone',
   'library:updateShapes',
   'library:pin', 'library:open', 'library:menu', 'library:show', 'library:action',
-  'library:drag', 'library:import', 'library:copy', 'library:paste', 'library:query', 'library:askInfo',
+  'library:drag', 'library:import', 'library:copy', 'library:paste', 'library:query', 'library:askInfo', 'library:menuPick',
   'progress:cancel',
   'traymenu:size', 'traymenu:pick', 'traymenu:close',
   'record:cancel', 'record:state', 'record:error', 'record:resize',
@@ -31,7 +31,7 @@ const SEND = [
 const INVOKE = [
   'app:save', 'app:savePiece', 'app:copy', 'app:copyCaptured', 'ocr:translate', 'app:openFolder', 'editor:findPrivate',
   'settings:get', 'settings:save', 'settings:pickFolder',
-  'library:list', 'library:rename', 'library:saveInfo',
+  'library:list', 'library:rename', 'library:saveInfo', 'library:allTags',
   'record:store', 'record:save',
 ]
 

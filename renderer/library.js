@@ -293,12 +293,15 @@ strip.addEventListener('contextmenu', (e) => {
   const id = cardIdFrom(e.target)
   if (!id) return
   if (!selected.has(id)) selectOnly(id)
+  menuAt = { x: e.clientX, y: e.clientY }
   window.api.send('library:menu', orderedSelection())
 })
 
 window.addEventListener('keydown', (e) => {
+  if (!ctxMenu.hidden) { menuKey(e); return }
   // 入力欄の中では、文字を打つ・消すのを邪魔しない
   if (!infoForm.hidden) {
+    if (e.target === tagInput && tagKey(e)) return
     if (e.key === 'Escape') { e.preventDefault(); closeInfo() }
     else if (e.key === 'Enter') { e.preventDefault(); submitInfo() }
     return
@@ -382,7 +385,187 @@ let infoFor = null   // { id, what }
 function closeInfo() {
   infoForm.hidden = true
   infoFor = null
+  hideSuggest()
 }
+
+// ---- タグの欄。付けたタグは札（×で外す）で並べ、打っている途中の文字で、付けてあるタグから候補を出す。
+// 候補から選べば言い回しのばらつきでタグが増えない。候補に無い言葉は Enter・読点・空白でそのまま新しいタグになる
+const tagInput = document.getElementById('infoTags')
+const tagChips = document.getElementById('tagChips')
+const tagSuggest = document.getElementById('tagSuggest')
+const TAG_SEP = /[,、，\s]+/
+let tagList = []
+let allTags = []      // [{ tag, n }] 多く使われている順
+let suggestions = []
+let suggestOn = -1
+
+function splitTags(s) {
+  return String(s || '').split(TAG_SEP).map((t) => t.trim()).filter(Boolean)
+}
+function setTags(list) {
+  tagList = []
+  for (const t of list) if (t && !tagList.includes(t)) tagList.push(t)
+  tagChips.textContent = ''
+  for (const t of tagList) {
+    const chip = document.createElement('span')
+    chip.className = 'chip'
+    chip.textContent = t
+    const x = document.createElement('button')
+    x.type = 'button'
+    x.textContent = '×'
+    x.title = 'このタグを外す'
+    x.addEventListener('mousedown', (e) => e.preventDefault())   // 入力欄からフォーカスを奪わない
+    x.addEventListener('click', () => { setTags(tagList.filter((v) => v !== t)); showSuggest() })
+    chip.appendChild(x)
+    tagChips.appendChild(chip)
+  }
+  tagInput.value = ''
+}
+function addTag(t) {
+  t = String(t || '').trim().slice(0, 40)
+  if (t) setTags(tagList.concat([t]))
+  showSuggest()
+}
+async function loadAllTags() {
+  try { allTags = (await window.api.invoke('library:allTags')) || [] } catch (_) { allTags = [] }
+  if (document.activeElement === tagInput) showSuggest()
+}
+// 打った文字を含むタグ（頭から合うものを先に）。何も打っていなければ、よく使うものから
+function showSuggest() {
+  const q = tagInput.value.trim().toLowerCase()
+  const left = allTags.filter((x) => !tagList.includes(x.tag))
+  const hit = q ? left.filter((x) => x.tag.toLowerCase().includes(q)) : left
+  if (q) hit.sort((a, b) => (b.tag.toLowerCase().startsWith(q) - a.tag.toLowerCase().startsWith(q)) || b.n - a.n)
+  suggestions = hit.slice(0, 30)
+  suggestOn = q && suggestions.length ? 0 : -1
+  tagSuggest.textContent = ''
+  for (const [k, x] of suggestions.entries()) {
+    const row = document.createElement('div')
+    row.className = 'sg' + (k === suggestOn ? ' on' : '')
+    const name = document.createElement('span')
+    const at = q ? x.tag.toLowerCase().indexOf(q) : -1
+    if (at >= 0) {
+      name.append(x.tag.slice(0, at))
+      const b = document.createElement('b')
+      b.textContent = x.tag.slice(at, at + q.length)
+      name.append(b, x.tag.slice(at + q.length))
+    } else name.textContent = x.tag
+    const n = document.createElement('span')
+    n.className = 'n'
+    n.textContent = x.n + '件'
+    row.append(name, n)
+    row.addEventListener('mousedown', (e) => { e.preventDefault(); addTag(x.tag) })
+    tagSuggest.appendChild(row)
+  }
+  tagSuggest.hidden = !suggestions.length || document.activeElement !== tagInput
+}
+function hideSuggest() { tagSuggest.hidden = true; suggestOn = -1 }
+function moveSuggest(d) {
+  if (!suggestions.length) return
+  suggestOn = (suggestOn + d + suggestions.length) % suggestions.length
+  tagSuggest.querySelectorAll('.sg').forEach((el, k) => el.classList.toggle('on', k === suggestOn))
+  const el = tagSuggest.children[suggestOn]
+  if (el) el.scrollIntoView({ block: 'nearest' })
+}
+// タグの欄で使ったキーは true を返す（ほかの処理に回さない）
+function tagKey(e) {
+  if (e.isComposing) return true   // 変換中の Enter は確定に使う
+  const open = !tagSuggest.hidden
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) showSuggest(); else moveSuggest(1); return true }
+  if (e.key === 'ArrowUp' && open) { e.preventDefault(); moveSuggest(-1); return true }
+  if (e.key === 'Escape' && open) { e.preventDefault(); hideSuggest(); return true }
+  if (e.key === 'Enter' && (suggestOn >= 0 || tagInput.value.trim())) {
+    e.preventDefault()
+    addTag(suggestOn >= 0 ? suggestions[suggestOn].tag : tagInput.value)
+    return true
+  }
+  if (e.key === 'Backspace' && !tagInput.value && tagList.length) {
+    e.preventDefault()
+    setTags(tagList.slice(0, -1))
+    showSuggest()
+    return true
+  }
+  return false
+}
+// 読点・空白・カンマを打ったら、その前までを1つのタグにする。日本語の変換中は区切らない（確定してから）
+function splitTyped() {
+  if (!TAG_SEP.test(tagInput.value)) return
+  const parts = tagInput.value.split(TAG_SEP)
+  const rest = parts.pop()
+  setTags(tagList.concat(parts.map((t) => t.trim()).filter(Boolean)))
+  tagInput.value = rest
+}
+tagInput.addEventListener('input', (e) => {
+  if (!e.isComposing) splitTyped()
+  showSuggest()
+})
+tagInput.addEventListener('compositionend', () => { splitTyped(); showSuggest() })
+tagInput.addEventListener('focus', showSuggest)
+tagInput.addEventListener('blur', hideSuggest)
+document.getElementById('tagBox').addEventListener('mousedown', (e) => {
+  if (e.target.id === 'tagBox' || e.target.id === 'tagChips') { e.preventDefault(); tagInput.focus() }
+})
+
+// ---- 右クリックメニュー。本体が送ってくる項目を、右クリックした所に出す（パネルからはみ出す分は内側へ寄せる）
+const ctxMenu = document.getElementById('ctxMenu')
+let menuAt = { x: 0, y: 0 }
+let menuOn = -1
+
+function closeMenu() { ctxMenu.hidden = true; menuOn = -1 }
+function pickMenu(i) {
+  closeMenu()
+  window.api.send('library:menuPick', i)
+}
+function menuRows() { return Array.from(ctxMenu.querySelectorAll('.mi:not(.off)')) }
+function menuKey(e) {
+  e.preventDefault()
+  const rows = menuRows()
+  if (e.key === 'Escape') { closeMenu(); return }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (!rows.length) return
+    menuOn = (menuOn + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length
+    ctxMenu.querySelectorAll('.mi').forEach((el) => el.classList.toggle('on', el === rows[menuOn]))
+    return
+  }
+  if (e.key === 'Enter' && rows[menuOn]) pickMenu(Number(rows[menuOn].dataset.i))
+}
+window.api.on('library:showMenu', (items) => {
+  ctxMenu.textContent = ''
+  for (const it of items || []) {
+    if (it.sep) {
+      const sep = document.createElement('div')
+      sep.className = 'msep'
+      ctxMenu.appendChild(sep)
+      continue
+    }
+    const row = document.createElement('div')
+    row.className = 'mi' + (it.enabled ? '' : ' off')
+    row.dataset.i = it.i
+    const label = document.createElement('span')
+    label.textContent = it.label
+    row.appendChild(label)
+    if (it.accel) {
+      const acc = document.createElement('span')
+      acc.className = 'acc'
+      acc.textContent = it.accel
+      row.appendChild(acc)
+    }
+    if (it.enabled) row.addEventListener('click', () => pickMenu(it.i))
+    row.addEventListener('mouseenter', () => { menuOn = -1; ctxMenu.querySelectorAll('.mi.on').forEach((el) => el.classList.remove('on')) })
+    ctxMenu.appendChild(row)
+  }
+  ctxMenu.style.left = '0px'
+  ctxMenu.style.top = '0px'
+  ctxMenu.hidden = false
+  const w = ctxMenu.offsetWidth, h = ctxMenu.offsetHeight
+  const x = menuAt.x + w + 4 <= window.innerWidth ? menuAt.x : Math.max(4, menuAt.x - w)
+  const y = menuAt.y + h + 4 <= window.innerHeight ? menuAt.y : Math.max(4, window.innerHeight - h - 4)
+  ctxMenu.style.left = x + 'px'
+  ctxMenu.style.top = y + 'px'
+})
+// メニューの外を押したら閉じる（押した所の操作は普段どおり通す）
+window.addEventListener('mousedown', (e) => { if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) closeMenu() }, true)
+window.addEventListener('blur', closeMenu)
 
 window.api.on('library:editInfo', (d) => {
   if (!d) return
@@ -395,7 +578,8 @@ window.api.on('library:editInfo', (d) => {
   document.getElementById('infoName').value = d.name || ''
   document.getElementById('infoExt').textContent = d.ext || ''
   document.getElementById('infoTitleIn').value = d.title || ''
-  document.getElementById('infoTags').value = d.tags || ''
+  setTags(Array.isArray(d.tags) ? d.tags : [])
+  if (!rename) loadAllTags()
   infoErr.textContent = ''
   infoForm.hidden = false
   const first = document.getElementById(rename ? 'infoName' : 'infoTitleIn')
@@ -412,7 +596,7 @@ async function submitInfo() {
     r = await window.api.invoke('library:saveInfo', {
       id: infoFor.id,
       title: document.getElementById('infoTitleIn').value,
-      tags: document.getElementById('infoTags').value,
+      tags: tagList.concat(splitTags(tagInput.value)),
     })
   }
   if (r && r.ok) closeInfo()

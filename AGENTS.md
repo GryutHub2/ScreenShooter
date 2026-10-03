@@ -65,6 +65,7 @@
 - 編集画面は `page-title-updated` を止めてから `setEditorTitle()` でファイル名をタイトルにする。止めないと `editor.html` の `<title>` に戻され、何枚も並べたときに見分けが付かなくなる。
 - 履歴パネルはサムネイルを `file://` で読むので、`library.html` の CSP は `img-src 'self' data: file:` が必要。
 - 履歴パネルから外へのドラッグは、画面側で `dragstart` を止めて本体の `startDrag()` でやり直す。止めないと `<img>` の元（小さい `thumb.png`）が渡る。`icon` が空だと Windows で例外になるので、サムネイルが読めないときはドラッグしない。
+- 履歴パネルの右クリックメニューは Windows 標準ではなく、パネルの中に描く（`showLibraryMenu` → `library:showMenu`、押した番号が `library:menuPick`）。標準のメニューは文字を大きくできないため。`Menu.popup` に戻さない。項目は Menu のテンプレートの形で足せばよい。
 - IMPORTANT: `library:drag` / `library:menu` が渡すのは**選んでいる ID の配列**（1件でも配列）。片方だけ単体 ID に戻すと、複数選択のドラッグ・メニューが黙って1件になる。
 - 履歴パネルの選択は `click` ではなく `mousedown` で決める。ドラッグは押した時点で始まるので、`click` を待つと複数まとめてドラッグできない。すでに選んである札を押したときだけ `heldId` で `mouseup` まで待つ（押した瞬間に1枚へ絞ると、まとめて掴めなくなる）。
 - IMPORTANT: 履歴パネルの自動引っ込めは**カーソルの実位置**で決める（`cursorOverLibrary`）。`mouseleave` 頼みだと、カーソルが乗ったまま窓を隠したとき通知が来ず「乗っている」で固まり、二度と引っ込まない。

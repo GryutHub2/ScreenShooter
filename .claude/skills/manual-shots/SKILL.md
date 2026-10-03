@@ -64,6 +64,8 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 
 ## ハマりどころ
 
+- 履歴パネルの右クリックメニューはパネルの中に描く自前のもの（2026-10-04 から）。項目の位置（`before-after` の `--combY` `--diffY` `--itemX`、`tags` の `--itemX` `--infoY`）は `--mode=calib` で測り直す
+
 - **本物の矢印は写らないことがある。** Windows の「入力中にポインターを隠す」がオンだと、キーを打ったあとは手でマウスを動かすまで矢印が消える。そのため `makeCursor()` が自前の矢印を重ねている
 - 録画が始まった合図は来ない。`clip()` は record.html の `phase === 'rec'` を見に行く
 - **前の回の編集画面が閉じきる前に次を撮ると**、録画の途中で窓が消える。そのとき手前の窓が切り替わり、右クリックのメニューが閉じる。閉じきるまで待つ（`before-after` の `reset()`）

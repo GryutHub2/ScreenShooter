@@ -504,7 +504,9 @@ ipcMain.handle('library:saveInfo', (e, d) => {
   if (!meta) return { ok: false }
   const title = String(d.title || '').trim().slice(0, 200)
   const tags = []
-  for (const t of String(d.tags || '').split(/[,、，\s]+/)) {
+  // 画面からは配列で届く（タグの中の空白を保つため）。文字列なら区切りで分ける
+  const raw = Array.isArray(d.tags) ? d.tags.map(String) : String(d.tags || '').split(/[,、，\s]+/)
+  for (const t of raw) {
     const v = t.trim().slice(0, 40)
     if (v && !tags.includes(v)) tags.push(v)
   }
@@ -513,6 +515,13 @@ ipcMain.handle('library:saveInfo', (e, d) => {
   writeMeta(meta)
   notifyLibraryChanged()
   return { ok: true }
+})
+
+// 付けてあるタグの一覧（多く使われている順）。タグの欄の候補に出して、言い回しの違うタグが増えるのを防ぐ
+ipcMain.handle('library:allTags', () => {
+  const count = new Map()
+  for (const m of lib().list()) for (const t of (Array.isArray(m.tags) ? m.tags : [])) count.set(t, (count.get(t) || 0) + 1)
+  return [...count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja')).map(([tag, n]) => ({ tag, n }))
 })
 
 ipcMain.on('library:query', (e, q) => {
@@ -530,7 +539,7 @@ function askLibraryInfo(id, what) {
     name: main ? path.basename(main, path.extname(main)) : '',
     ext: main ? path.extname(main) : '',
     title: meta.title || '',
-    tags: (meta.tags || []).join('、'),
+    tags: Array.isArray(meta.tags) ? meta.tags : [],
   })
 }
 ipcMain.on('library:askInfo', (e, d) => { if (d && typeof d.id === 'string') askLibraryInfo(d.id, d.what === 'rename' ? 'rename' : 'info') })
@@ -3499,21 +3508,45 @@ function libraryMenuForMany(ids) {
   ]
 }
 
+// 右クリックメニューは Windows 標準のメニューを使わず、パネルの中に描かせる（標準のメニューは文字の大きさを変えられないため）。
+// 組み立ては Menu のテンプレートと同じ形のまま。押された項目の番号が返ってきたら、その click を呼ぶ
+let libraryMenuClicks = []
+function showLibraryMenu(win, template) {
+  if (!win || win.isDestroyed()) return
+  libraryMenuClicks = []
+  const items = template.map((t) => {
+    if (t.type === 'separator') return { sep: true }
+    libraryMenuClicks.push(t.click || null)
+    return {
+      i: libraryMenuClicks.length - 1,
+      label: String(t.label || ''),
+      accel: t.accelerator ? String(t.accelerator).replace('CmdOrCtrl', 'Ctrl') : '',
+      enabled: t.enabled !== false,
+    }
+  })
+  win.webContents.send('library:showMenu', items)
+}
+ipcMain.on('library:menuPick', (e, i) => {
+  const click = Number.isInteger(i) ? libraryMenuClicks[i] : null
+  libraryMenuClicks = []
+  if (typeof click === 'function') click()
+})
+
 ipcMain.on('library:menu', (e, payload) => {
   const ids = idList(payload)
   const win = BrowserWindow.fromWebContents(e.sender)
   if (ids.length > 1) {
-    Menu.buildFromTemplate(libraryMenuForMany(ids)).popup({ window: win })
+    showLibraryMenu(win, libraryMenuForMany(ids))
     return
   }
   const id = ids[0]
   const meta = id ? readEntry(id) : null
   if (!meta) return
   if (meta.kind === 'video') {
-    Menu.buildFromTemplate(libraryMenuForVideo(id, meta)).popup({ window: win })
+    showLibraryMenu(win, libraryMenuForVideo(id, meta))
     return
   }
-  const menu = Menu.buildFromTemplate([
+  showLibraryMenu(win, [
     { label: '編集する', click: () => openEditorFromLibrary(id) },
     {
       label: 'クリップボードにコピー',
@@ -3540,7 +3573,6 @@ ipcMain.on('library:menu', (e, payload) => {
       },
     },
   ])
-  menu.popup({ window: win })
 })
 
 // ---------------------------------------------------------------- 画面に浮かせる（ピン留め）

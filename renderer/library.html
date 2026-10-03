@@ -29,11 +29,17 @@
     <div id="infoTitle"></div>
     <label class="infoRow" id="rowName">名前 <input id="infoName" spellcheck="false"><span id="infoExt"></span></label>
     <label class="infoRow" id="rowTitle">タイトル <input id="infoTitleIn" spellcheck="false" placeholder="例：請求画面のエラー"></label>
-    <label class="infoRow" id="rowTags">タグ <input id="infoTags" spellcheck="false" placeholder="読点か空白で区切る（例：経理、手順書）"></label>
+    <div class="infoRow" id="rowTags">タグ
+      <div id="tagBox"><span id="tagChips"></span><input id="infoTags" spellcheck="false" autocomplete="off" placeholder="打つと、付けてあるタグから選べます"></div>
+    </div>
+    <div id="tagSuggest" hidden></div>
     <div id="infoErr"></div>
     <div class="infoBtns"><button id="infoCancel">やめる</button><button id="infoOk" class="primary">決める</button></div>
   </div>
 </div>
+
+<!-- 右クリックメニュー（本体が中身を送ってくる。Windows 標準のメニューは文字を大きくできないため） -->
+<div id="ctxMenu" hidden></div>
 
 <div id="dropHint" hidden>ここに落とすと、この絵を取り込んで開きます</div>
 
