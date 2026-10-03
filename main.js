@@ -30,7 +30,12 @@ function defaultSettings() {
     hotkeyScroll: '',               // スクロールして長いページを撮る（空 = 割り当てなし）
     hotkeyRecord: '',               // 録画する（空 = 割り当てなし）
     hotkeyRepeat: '',               // 前回と同じ範囲で撮る（空 = 割り当てなし。他アプリとの衝突を避けるため既定は空）
+    hotkeyDelay: '',                // 時間差で撮る（delaySeconds 秒後に範囲選択。空 = 割り当てなし）
+    delaySeconds: 5,                // 時間差で撮るまでの秒数（キーと、トレイの「◯秒後（設定の秒数）」で使う）
     lastRegion: null,               // 前回、範囲選択で撮った場所（rememberRegion が書く）
+    // 撮った直後
+    afterCapture: 'editor',         // 'editor' = 編集画面を開く / 'library' = 開かずに履歴パネルを出す
+    captureClipboard: 'image',      // 撮った直後にクリップボードへ（CAPTURE_CLIPBOARDS）。自動ぼかしが済んでから入れる
     saveDir: path.join(app.getPath('pictures'), 'ScreenShooter'),
     sendToMenu: false,              // 右クリックの「送る」に「ScreenShooterで開く」を出す
     snapWindows: true,              // カーソルの下のウィンドウに枠を吸い付かせる
@@ -43,6 +48,7 @@ function defaultSettings() {
     libraryPinned: false,           // ピン留め（出しっぱなし）
     libraryBounds: null,            // パネルの大きさと位置（動かしたら覚える）
     libraryThumbHeight: 104,        // 一覧のサムネイルの高さ(px)
+    libraryOrder: 'old',            // 並び順。'old' = 古い→新しい（最新が右下）/ 'new' = 新しい→古い / 'name' = 名前順
     // 録画
     recordFps: 15,                  // 動画のなめらかさ（1秒あたりのコマ数）
     gifFps: 10,                     // GIF のなめらかさ
@@ -59,8 +65,17 @@ function defaultSettings() {
     exportFinish: 'none',           // コピー・書き出しの仕上げ（EXPORT_FINISHES）。最後に選んだものを覚える
     stylePresets: defaultStylePresets(),  // 書き方のお気に入り4つ（編集画面の下の帯・数字キー 1〜4）
     resizeLast: null,               // 大きさを変えるダイアログで前回 OK した値。次に開いたとき最初に入れるだけ（勝手に縮めない）
+    padLast: null,                  // 前回付けた余白。次にダイアログを開いたとき最初に入れるだけ
+    lineDash: 'solid',              // 線の種類（LINE_DASHES）
+    rectRadius: 0,                  // 四角の角の丸み（RECT_RADII）
+    zoomK: 2,                       // 拡大鏡の倍率（ZOOM_FACTORS）
   }
 }
+
+// 撮った直後に入れるもの。'off' = 入れない / 'image' = 絵 / 'imagePath' = 絵とファイルの場所 / 'path' = ファイルの場所だけ
+const CAPTURE_CLIPBOARDS = ['off', 'image', 'imagePath', 'path']
+const AFTER_CAPTURES = ['editor', 'library']
+const LIBRARY_ORDERS = ['old', 'new', 'name']
 
 // 絵の大きさ（撮ったときに対する倍率。editor.js の SCALE_MIN / SCALE_MAX と同じ範囲）。
 // 履歴の meta.scale にあるとき、meta.shapes と meta.crop はその大きさの座標
@@ -284,6 +299,45 @@ function openImageFiles(paths) {
     if (img) openEditor(img, metas[0])
   }
   return metas.length
+}
+
+// クリップボードの画像を、撮ったものと同じように保存先へ書いて履歴に入れる。
+// open = トレイから（編集画面で開く）。履歴パネルの Ctrl+V では一覧に足すだけにする（Screenpresso の貼り付けと同じ）。
+// エクスプローラーでコピーした画像ファイルは、絵ではなくファイルの場所が入っているので、取り込みとして扱う
+function openClipboardImage(open) {
+  const img = clipboard.readImage()
+  if (img.isEmpty()) {
+    const files = clipboardFilePaths().filter((p) => IMPORT_EXTS.includes(path.extname(p).toLowerCase()))
+    if (files.length) {
+      if (open) openImageFiles(files)
+      else { for (const f of files) importImage(f); notifyLibraryChanged() }
+      return true
+    }
+    if (open) showError('クリップボードに画像がありません', '画像をコピーしてから、もう一度押してください。')
+    else libraryToast('クリップボードに画像がありません')
+    return false
+  }
+  const meta = addToLibrary(img, null)
+  if (!meta) { libraryToast('保存先に書けませんでした'); return false }
+  notifyLibraryChanged()
+  const autoBlur = settings.autoBlur !== false
+  if (open) openEditor(img, meta, { autoBlur })
+  else {
+    libraryToast('クリップボードの画像を足しました')
+    if (autoBlur) runBackgroundEditor(img, meta, { autoBlur, copyMode: 'off' })
+  }
+  return true
+}
+
+// エクスプローラーでコピーしたファイルの場所。Windows はファイル名を UTF-16 の並び（FileNameW）で持つ
+function clipboardFilePaths() {
+  try {
+    const buf = clipboard.readBuffer('FileNameW')
+    if (!buf || !buf.length) return []
+    return buf.toString('utf16le').split('\0').map((s) => s.trim()).filter((s) => s && fs.existsSync(s))
+  } catch (_) {
+    return []
+  }
 }
 
 // 保存先に同じ名前があったら「-2」「-3」と後ろに足す。既にあるファイルを潰さないため
@@ -818,7 +872,7 @@ function rectsOverlap(a, b) {
 
 // 暗幕を出さずに、その範囲をすぐ撮る。ふつうの撮影と同じく保存先・履歴・編集画面へ流す。
 // 合わないときの範囲選択も await で待つ（呼び出し側が隠した窓を戻すのは、取り込みが済んでから）
-async function captureRegion(region) {
+async function captureRegion(region, opts) {
   if (capturing || scrollBusy) return
   const display = regionDisplay(region)
   if (!display) { await startRegionCapture('region'); return }
@@ -840,7 +894,7 @@ async function captureRegion(region) {
   }
   const r = Object.assign({}, region)
   rememberRegion(r)
-  captureDone(shot.image.crop({ x: r.x, y: r.y, width: r.w, height: r.h }), r)
+  captureDone(shot.image.crop({ x: r.x, y: r.y, width: r.w, height: r.h }), r, opts)
 }
 
 function captureLastRegion() {
@@ -884,7 +938,7 @@ ipcMain.on('editor:retake', async (e) => {
   // hide() の直後はまだ画面に残っていることがあるので、取り込みまで少し待つ
   await delay(220)
   try {
-    await captureRegion(region)
+    await captureRegion(region, { editor: true })
   } finally {
     for (const w of hidden) if (!w.isDestroyed()) w.showInactive()
     // ピン留めのパネルだけ戻す。ピン留めでないパネルは、履歴パネルのボタンから撮ったときと同じく引っ込めたまま
@@ -1275,18 +1329,66 @@ ipcMain.on('progress:cancel', () => { scrollCancel = true })
 // ---------------------------------------------------------------- 時間差で撮る
 
 let delayTimer = null
+let countdownWin = null
+
+// 残り秒数は、カーソルのある画面の真ん中に大きく出す。
+// 待っている間にメニューを開いておく使い方なので、この窓はクリックを素通しし、キーの行き先も奪わない
+// （手前に出てフォーカスを取ると、開いておいたメニューが閉じてしまう）
+function showCountdown(n) {
+  if (!countdownWin || countdownWin.isDestroyed()) {
+    const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+    const W = 220, H = 230
+    countdownWin = new BrowserWindow({
+      width: W, height: H,
+      x: Math.round(wa.x + (wa.width - W) / 2), y: Math.round(wa.y + (wa.height - H) / 2),
+      show: false, frame: false, transparent: true, resizable: false, movable: false,
+      focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
+      title: 'ScreenShooter — 時間差',
+      webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    })
+    countdownWin.setIgnoreMouseEvents(true)
+    countdownWin.setAlwaysOnTop(true, 'screen-saver')
+    countdownWin.on('closed', () => { countdownWin = null })
+    const win = countdownWin
+    loadGuarded(win, path.join(RENDERER, 'countdown.html'), 'カウントダウン', {
+      quiet: true,
+      onReady: () => {
+        if (win.isDestroyed()) return
+        win.webContents.send('countdown:tick', win.lastTick || n)
+        win.showInactive()
+      },
+    })
+  }
+  countdownWin.lastTick = n
+  countdownWin.webContents.send('countdown:tick', n)
+}
+
+function hideCountdown() {
+  if (countdownWin && !countdownWin.isDestroyed()) countdownWin.destroy()
+  countdownWin = null
+}
+
+function cancelDelayedCapture() {
+  if (delayTimer) clearInterval(delayTimer)
+  delayTimer = null
+  hideCountdown()
+  if (tray) tray.setToolTip(trayTooltip())
+}
 
 function startDelayedCapture(seconds) {
   if (delayTimer) clearInterval(delayTimer)
-  let left = Math.max(1, seconds)
+  let left = Math.max(1, Math.min(60, Math.round(seconds) || 5))
   const tick = () => {
     if (left <= 0) {
       clearInterval(delayTimer)
       delayTimer = null
+      hideCountdown()
       if (tray) tray.setToolTip(trayTooltip())
-      startRegionCapture('region')
+      // カウントダウンの窓が画面から消えきってから撮る（写り込まないように）
+      setTimeout(() => startRegionCapture('region'), 160)
       return
     }
+    showCountdown(left)
     if (tray) tray.setToolTip('ScreenShooter — あと ' + left + ' 秒で撮ります')
     left--
   }
@@ -1294,13 +1396,91 @@ function startDelayedCapture(seconds) {
   delayTimer = setInterval(tick, 1000)
 }
 
-// 撮れたら履歴に入れてから編集画面を開く。
-// 履歴パネルはここでは出さない。編集画面と二重に出てきて邪魔になるため、開くのはトレイからだけ。
-function captureDone(image, region) {
+// 設定の秒数（delaySeconds）。壊れていたら 5 秒
+function delaySeconds() {
+  const n = Math.round(Number(settings.delaySeconds))
+  return n >= 1 && n <= 60 ? n : 5
+}
+
+// 撮れたら履歴に入れてから、設定の「撮った直後」に従って編集画面を開くか、履歴パネルを出す。
+// 編集画面を開くときは履歴パネルを出さない（二重に出てきて邪魔になるため）。
+// 自動ぼかし・クリップボードへのコピーは、どちらの場合も編集画面（出さないときは見えない窓）がやる
+// （描き方を main 側に真似て書くと、編集画面と見た目が食い違うため）。
+// opts.editor は「同じ範囲で撮り直す」から来たとき。編集画面から押したので、設定にかかわらず編集画面で開く
+function captureDone(image, region, opts) {
   const meta = addToLibrary(image, region)
-  openEditor(image, meta, { autoBlur: settings.autoBlur !== false })
+  const clip = CAPTURE_CLIPBOARDS.includes(settings.captureClipboard) ? settings.captureClipboard : 'image'
+  const autoBlur = settings.autoBlur !== false
+  // ファイルの場所だけなら絵を作る必要がないので、ここで入れてしまう
+  if (clip === 'path' && meta && meta.file) clipboard.writeText(meta.file)
+  const tasks = { autoBlur, copyMode: clip }
+  if ((opts && opts.editor) || settings.afterCapture !== 'library' || !meta) {
+    openEditor(image, meta, tasks)
+  } else {
+    showLibrary(true)
+    if (autoBlur || clip === 'image' || clip === 'imagePath') runBackgroundEditor(image, meta, tasks)
+  }
   notifyLibraryChanged()
 }
+
+// 撮った直後に編集画面を出さない設定のとき、自動ぼかし・コピーを見えない編集画面にやらせる。
+// 終わるまでに同じ履歴を開こうとしたら、終わるのを待ってから開く（両方が履歴へ書いて上書きし合わないように）
+const BACKGROUND_WAIT_MS = 60000
+const backgroundJobs = new Map()   // 履歴の ID → 終わったら解ける Promise
+const backgroundDone = new Map()   // 見えない窓の webContents.id → 終わりを受け取る関数
+
+function runBackgroundEditor(image, meta, tasks) {
+  const job = new Promise((resolve) => {
+    const win = new BrowserWindow({
+      show: false, width: 1230, height: 800, skipTaskbar: true,
+      webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    })
+    // 自動ぼかしの読み取り（editor:findPrivate）は、窓が持つ履歴の ID で絵を決める
+    win.libraryId = meta.id
+    const wcId = win.webContents.id
+    let done = false
+    const finish = (d) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      backgroundDone.delete(wcId)
+      backgroundJobs.delete(meta.id)
+      if (!win.isDestroyed()) win.destroy()
+      notifyLibraryChanged()
+      if (d && d.blurred > 0) libraryToast('個人情報らしき所を ' + d.blurred + ' か所ぼかしました。必ず自分の目でも確認してください')
+      resolve()
+    }
+    const timer = setTimeout(() => finish(null), BACKGROUND_WAIT_MS)
+    backgroundDone.set(wcId, finish)
+    win.on('closed', () => finish(null))
+    loadGuarded(win, path.join(RENDERER, 'editor.html'), '撮った直後の処理', {
+      quiet: true,
+      onGiveUp: () => finish(null),
+      onReady: () => win.webContents.send('editor:init', Object.assign(editorInitData(image, meta), tasks, { background: true })),
+    })
+  })
+  backgroundJobs.set(meta.id, job)
+  return job
+}
+
+ipcMain.on('editor:backgroundDone', (e, d) => {
+  const finish = backgroundDone.get(e.sender.id)
+  if (finish) finish(d || null)
+})
+
+// 撮った直後のコピー。絵（と、選んでいればファイルの場所の文字）を一度に入れる
+ipcMain.handle('app:copyCaptured', (e, d) => {
+  if (!d || typeof d.dataUrl !== 'string') return { ok: false }
+  try {
+    const img = nativeImage.createFromDataURL(d.dataUrl)
+    if (img.isEmpty()) return { ok: false }
+    if (d.mode === 'imagePath' && typeof d.path === 'string' && d.path) clipboard.write({ image: img, text: d.path })
+    else clipboard.writeImage(img)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: String(err) }
+  }
+})
 
 // ---------------------------------------------------------------- 録画（GIF・動画）
 //
@@ -1625,6 +1805,10 @@ function editorInitData(image, meta) {
     deco: settings.textDeco,
     halo: settings.textHalo,
     finish: exportFinish(),
+    lineDash: LINE_DASHES.includes(settings.lineDash) ? settings.lineDash : 'solid',
+    rectRadius: RECT_RADII.includes(settings.rectRadius) ? settings.rectRadius : 0,
+    zoomK: ZOOM_FACTORS.includes(settings.zoomK) ? settings.zoomK : 2,
+    padLast: validPad(settings.padLast),
     stylePresets: stylePresets(),
     libraryId: meta ? meta.id : null,
     canRetake: !!(meta && validRegion(meta.region)),
@@ -1632,6 +1816,7 @@ function editorInitData(image, meta) {
     crop: meta ? (meta.crop || null) : null,
     scale: entryScale(meta),
     cuts: entryCuts(meta),
+    pad: meta ? validPad(meta.pad) : null,
     resizeLast: settings.resizeLast || null,
     savedPath: meta ? (meta.file || null) : null,
     editedPath: meta ? (meta.editedPath || null) : null,
@@ -1735,6 +1920,8 @@ function openEditor(image, meta, opts) {
         // 「違いに赤枠を付ける」で足す四角。画面側が元に戻せる1回の変更として足す
         addShapes: o.addShapes || null,
         autoBlur: !!o.autoBlur,
+        // 撮った直後だけ：自動ぼかしのあとクリップボードへ入れる
+        copyMode: o.copyMode || 'off',
       }))
       win.webContents.send('editor:title', win.getTitle())
     },
@@ -1763,7 +1950,12 @@ function openEditor(image, meta, opts) {
   editorWins.add(win)
 }
 
-function openEditorFromLibrary(id) {
+async function openEditorFromLibrary(id) {
+  // 撮った直後の処理（自動ぼかしなど）がまだ裏で動いていたら、済んでから開く
+  if (backgroundJobs.has(id)) {
+    libraryToast('自動ぼかしの途中です。済んだら開きます')
+    await backgroundJobs.get(id)
+  }
   const meta = readEntry(id)
   if (!meta) return
   for (const w of editorWins) {
@@ -1950,7 +2142,20 @@ ipcMain.on('editor:aspect', (e, d) => {
 // 文字の飾り。知らない値を設定ファイルに書かないよう、ここで受け付けるものを決める（editor.js の DECOS と同じ）
 const TEXT_DECOS = ['auto', 'white', 'black', 'shadow', 'white-shadow', 'none']
 // コピー・書き出しの仕上げ。受け付ける値はここで決める（editor.js の FINISHES と同じ）
-const EXPORT_FINISHES = ['none', 'border', 'shadow', 'backdrop']
+const EXPORT_FINISHES = ['none', 'border', 'round', 'shadow', 'backdrop']
+// 線の種類・角の丸み・拡大鏡の倍率。受け付ける値はここで決める（editor.js の LINE_DASHES / RECT_RADII / ZOOM_FACTORS と同じ）
+const LINE_DASHES = ['solid', 'dash', 'dot']
+const RECT_RADII = [0, 6, 12, 20]
+const ZOOM_FACTORS = [1.5, 2, 2.5, 3, 4]
+const PAD_COLORS = ['#ffffff', '#000000', 'transparent']
+
+// 手で足した余白 { t, r, b, l, color }。壊れた値・全部 0 は「余白なし」（null）
+function validPad(p) {
+  if (!p || typeof p !== 'object') return null
+  const n = (v) => Math.max(0, Math.min(4000, Math.round(Number(v) || 0)))
+  const out = { t: n(p.t), r: n(p.r), b: n(p.b), l: n(p.l), color: PAD_COLORS.includes(p.color) ? p.color : '#ffffff' }
+  return out.t || out.r || out.b || out.l ? out : null
+}
 
 // 設定の仕上げ。手で壊された値は「そのまま」に戻す
 function exportFinish() {
@@ -1967,6 +2172,10 @@ ipcMain.on('app:setDefaults', (e, data) => {
   if (TEXT_DECOS.includes(data.deco)) patch.textDeco = data.deco
   if (Number.isFinite(data.halo) && data.halo > 0 && data.halo <= 1) patch.textHalo = data.halo
   if (EXPORT_FINISHES.includes(data.finish)) patch.exportFinish = data.finish
+  if (LINE_DASHES.includes(data.lineDash)) patch.lineDash = data.lineDash
+  if (RECT_RADII.includes(data.rectRadius)) patch.rectRadius = data.rectRadius
+  if (ZOOM_FACTORS.includes(data.zoomK)) patch.zoomK = data.zoomK
+  if (data.pad) { const p = validPad(data.pad); if (p) patch.padLast = p }
   const rz = data.resize
   if (rz && ['pct', 'width', 'height'].includes(rz.mode)) {
     const num = (v, hi) => (Number.isFinite(v) && v > 0 && v <= hi ? v : 0)
@@ -2021,6 +2230,9 @@ ipcMain.on('library:import', (e, paths) => {
   openImageFiles(paths)
 })
 
+// 履歴パネルで Ctrl+V。クリップボードの画像を一覧に足す（編集画面は開かない）
+ipcMain.on('library:paste', () => { openClipboardImage(false) })
+
 ipcMain.on('library:updateShapes', (e, data) => {
   const meta = readEntry(data.id)
   if (!meta) return
@@ -2032,6 +2244,9 @@ ipcMain.on('library:updateShapes', (e, data) => {
   const cuts = validCuts(data.cuts)
   if (cuts.length) meta.cuts = cuts
   else delete meta.cuts
+  const pad = validPad(data.pad)
+  if (pad) meta.pad = pad
+  else delete meta.pad
   writeMeta(meta)
   if (data.thumbDataUrl) {
     try {
@@ -2060,6 +2275,7 @@ function hasEdits(meta, size) {
   // 大きさを変えた絵は、見えない編集画面で作り直す（ここで縮めると編集画面と違う縮め方になるため）
   if (entryScale(meta) !== 1) return true
   if (entryCuts(meta).length) return true
+  if (validPad(meta.pad)) return true
   const c = meta.crop
   return !!(c && (c.x !== 0 || c.y !== 0 || c.w !== size.width || c.h !== size.height))
 }
@@ -2503,6 +2719,7 @@ function notifyLibraryChanged() {
     items: libraryItems(80),
     pinned: !!settings.libraryPinned,
     thumbHeight: settings.libraryThumbHeight || 104,
+    order: LIBRARY_ORDERS.includes(settings.libraryOrder) ? settings.libraryOrder : 'old',
   })
 }
 
@@ -2652,6 +2869,7 @@ ipcMain.handle('library:list', () => ({
   items: libraryItems(80),
   pinned: !!settings.libraryPinned,
   thumbHeight: settings.libraryThumbHeight || 104,
+  order: LIBRARY_ORDERS.includes(settings.libraryOrder) ? settings.libraryOrder : 'old',
 }))
 
 // ---- 履歴パネルから外へドラッグする ----
@@ -3192,7 +3410,8 @@ function openSettings() {
   settingsWin.on('closed', () => { settingsWin = null })
 }
 
-ipcMain.handle('settings:get', () => ({ ...settings }))
+// 自動起動は設定ファイルに持たず、スタートアップ フォルダの中身から毎回決める
+ipcMain.handle('settings:get', () => ({ ...settings, exportFinish: exportFinish(), autoStart: autoStartEnabled() }))
 
 ipcMain.handle('settings:save', (e, patch) => {
   const clean = {}
@@ -3201,6 +3420,12 @@ ipcMain.handle('settings:save', (e, patch) => {
   if (typeof patch.hotkeyScroll === 'string') clean.hotkeyScroll = patch.hotkeyScroll.trim()
   if (typeof patch.hotkeyRecord === 'string') clean.hotkeyRecord = patch.hotkeyRecord.trim()
   if (typeof patch.hotkeyRepeat === 'string') clean.hotkeyRepeat = patch.hotkeyRepeat.trim()
+  if (typeof patch.hotkeyDelay === 'string') clean.hotkeyDelay = patch.hotkeyDelay.trim()
+  if (Number.isFinite(patch.delaySeconds)) clean.delaySeconds = Math.max(1, Math.min(60, Math.round(patch.delaySeconds)))
+  if (AFTER_CAPTURES.includes(patch.afterCapture)) clean.afterCapture = patch.afterCapture
+  if (CAPTURE_CLIPBOARDS.includes(patch.captureClipboard)) clean.captureClipboard = patch.captureClipboard
+  if (EXPORT_FINISHES.includes(patch.exportFinish)) clean.exportFinish = patch.exportFinish
+  if (LIBRARY_ORDERS.includes(patch.libraryOrder)) clean.libraryOrder = patch.libraryOrder
   if (typeof patch.saveDir === 'string' && patch.saveDir.trim()) clean.saveDir = patch.saveDir.trim()
   if (typeof patch.sendToMenu === 'boolean') clean.sendToMenu = patch.sendToMenu
   if (typeof patch.snapWindows === 'boolean') clean.snapWindows = patch.snapWindows
@@ -3238,7 +3463,10 @@ ipcMain.handle('settings:save', (e, patch) => {
   notifyLibraryChanged()
   const failed = applyHotkeys()
   refreshTrayMenu()
-  return { ok: failed.length === 0, failed }
+  // 自動起動は、画面でチェックを切り替えたときだけ届く（autoStartChanged）。届かなければフォルダには触らない
+  let autoStart = null
+  if (patch.autoStartChanged === true && typeof patch.autoStart === 'boolean') autoStart = setAutoStart(patch.autoStart)
+  return { ok: failed.length === 0 && (!autoStart || autoStart.ok), failed, autoStart, autoStartNow: autoStartEnabled() }
 })
 
 ipcMain.handle('settings:pickFolder', async (e) => {
@@ -3275,6 +3503,11 @@ function applyHotkeys() {
   reg(settings.hotkeyFull, '画面全体を撮る', () => { captureFullScreen() })
   reg(settings.hotkeyRepeat, '前回と同じ範囲で撮る', () => { captureLastRegion() })
   reg(settings.hotkeyScroll, 'スクロールして長いページを撮る', () => { startRegionCapture('scroll') })
+  // 時間差のキーは、数えている途中に押すと「やめる」になる
+  reg(settings.hotkeyDelay, '時間差で撮る', () => {
+    if (delayTimer) cancelDelayedCapture()
+    else startDelayedCapture(delaySeconds())
+  })
   // 録画のキーは、録画中に押すと「止める」になる
   reg(settings.hotkeyRecord, '録画する', () => {
     if (recording) stopRecording()
@@ -3283,11 +3516,62 @@ function applyHotkeys() {
   return failed
 }
 
-// IMPORTANT: 自動起動はアプリで面倒を見ない（2026-09-13 ユーザー判断）。
-// スタートアップ フォルダの起動ショートカット（古い名前の `スクショ.lnk` のままでも動く）はユーザーが自分で置く。
-// アプリ側から作る・消すを一切しないので、書くコードもここには無い
-// （置きっぱなしのショートカットを設定のチェック1つで消してしまう事故を無くすため）。
-// ひな形が要るときは tools\make-shortcut.ps1 で作る。
+// ---------------------------------------------------------------- Windows 起動時の自動起動
+//
+// スタートアップ フォルダの .lnk 1個で実現する（レジストリの Run はデスクトップより先に走り、トレイに出ないことがあるため）。
+// IMPORTANT: 以前、設定のチェック1つで手で置いたショートカットを消す事故があった。そのため
+//   ・動かすのは、設定画面でチェックを「切り替えた」ときだけ（保存のたびに状態を書き直さない）
+//   ・消すのは、このアプリ（この electron.exe にこのフォルダを渡すもの）を起動するショートカットだけ
+//   ・チェックの表示は、毎回フォルダの中身を見て決める（設定ファイルに覚えない）
+// SCREENSHOOTER_STARTUP_DIR は動作確認用（本物のスタートアップ フォルダを触らずに試すため）
+const STARTUP_LINKS = [app.getName() + '.lnk', OLD_NAME + '.lnk']
+
+function startupDir() {
+  return process.env.SCREENSHOOTER_STARTUP_DIR
+    || path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup')
+}
+
+// このアプリを起動するショートカットか。引数の引用符は外して、フォルダの場所で比べる
+function launchesThisApp(link) {
+  try {
+    const s = shell.readShortcutLink(link)
+    return samePath(s.target, process.execPath) && samePath(String(s.args || '').replace(/"/g, '').trim(), ROOT)
+  } catch (_) {
+    return false
+  }
+}
+
+function ourStartupLinks() {
+  return STARTUP_LINKS.map((n) => path.join(startupDir(), n)).filter((p) => fs.existsSync(p) && launchesThisApp(p))
+}
+
+function autoStartEnabled() { return ourStartupLinks().length > 0 }
+
+function setAutoStart(on) {
+  try {
+    if (!on) {
+      for (const p of ourStartupLinks()) fs.rmSync(p, { force: true })
+      return { ok: true }
+    }
+    if (autoStartEnabled()) return { ok: true }
+    const link = path.join(startupDir(), STARTUP_LINKS[0])
+    // 同じ名前で別のものを起動するショートカットがあったら、上書きしない
+    if (fs.existsSync(link)) return { ok: false, error: '同じ名前の別のショートカットがあるため作れませんでした： ' + link }
+    fs.mkdirSync(path.dirname(link), { recursive: true })
+    // フォルダ名に空白が入るので、渡す側で引用符を付ける
+    const ok = shell.writeShortcutLink(link, 'create', {
+      target: process.execPath,
+      args: '"' + ROOT + '"',
+      cwd: ROOT,
+      icon: path.join(ASSETS, 'app.ico'),
+      iconIndex: 0,
+      description: app.getName(),
+    })
+    return ok ? { ok: true } : { ok: false, error: 'ショートカットを作れませんでした' }
+  } catch (err) {
+    return { ok: false, error: String(err) }
+  }
+}
 
 // 右クリックの「送る」に出すショートカット。レジストリは触らず、ファイルを1個置くだけ。
 // 「送る」で選んだファイルのパスは、この args の後ろに足されて渡ってくる（imagePathsFrom で拾う）
@@ -3366,14 +3650,19 @@ function trayMenuTemplate() {
     ),
     // 録画中は「止める」だけを出す（同じ範囲でもう1本は重ねて始められない）
     ...(recording ? [] : [{ label: repeatLabel('前回と同じ範囲で録画'), click: () => recordLastRegion() }]),
-    {
-      label: '時間差で撮る',
-      submenu: [
-        { label: '3秒後に範囲を撮る', click: () => startDelayedCapture(3) },
-        { label: '5秒後に範囲を撮る', click: () => startDelayedCapture(5) },
-        { label: '10秒後に範囲を撮る', click: () => startDelayedCapture(10) },
-      ],
-    },
+    // 数えている途中は「やめる」だけを出す
+    delayTimer
+      ? { label: '時間差撮影をやめる', click: () => cancelDelayedCapture() }
+      : {
+        label: '時間差で撮る',
+        submenu: [
+          trayItem(delaySeconds() + '秒後に範囲を撮る（設定の秒数）', settings.hotkeyDelay, () => startDelayedCapture(delaySeconds())),
+          { label: '3秒後に範囲を撮る', click: () => startDelayedCapture(3) },
+          { label: '5秒後に範囲を撮る', click: () => startDelayedCapture(5) },
+          { label: '10秒後に範囲を撮る', click: () => startDelayedCapture(10) },
+        ],
+      },
+    { label: 'クリップボードの画像を開く', click: () => openClipboardImage(true) },
     { type: 'separator' },
     { label: '履歴パネルを開く', click: () => showLibrary(false) },
     // 浮かせた絵があるときだけ出す（自前のメニューは「押せない項目」を持てないため）

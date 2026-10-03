@@ -135,6 +135,22 @@ const signup = doc(`<style>
   <div class="go"><button class="primary">登録する</button></div>
 </div>`, 600, 380)
 
+// 省略用。行の多い支出の表。真ん中の行を抜いて、最初の数行と合計だけを見せる
+const LEDGER = [
+  ['9/01', 'スーパー', '3,200'], ['9/03', 'ドラッグストア', '1,180'], ['9/05', '電気代', '6,800'],
+  ['9/08', 'スーパー', '2,640'], ['9/10', '水道代', '3,950'], ['9/12', '本', '1,500'],
+  ['9/15', 'スーパー', '4,020'], ['9/18', '美容院', '5,500'], ['9/21', 'ガス代', '4,310'],
+  ['9/24', 'スーパー', '2,870'], ['9/27', '映画', '1,900'], ['9/30', '携帯電話', '3,300'],
+]
+const ledger = doc(`<header>サンプル家計簿 <small>9月の支出</small></header>
+<div class="wrap">
+  <table><colgroup><col class="d"><col><col class="m"></colgroup>
+    <tr><th>日付</th><th>内容</th><th class="r">金額</th></tr>
+    ${LEDGER.map(([d, t, m]) => `<tr><td>${d}</td><td>${t}</td><td class="r">${m}円</td></tr>`).join('')}
+    <tr class="total"><td></td><td>合計</td><td class="r">41,170円</td></tr>
+  </table>
+</div>`, 520, 530)
+
 // スクロール撮影用の長いページ（窓に直に出す）。画面に貼り付く見出しは置かない（継ぎ目を見失うため）。
 // 1件ずつ文の長さ・色を変えて、どこを切っても同じ帯にならないようにする
 const LONG_W = 760
@@ -174,6 +190,7 @@ const PNGS = {
   'account': { html: account, w: 600, h: 420 },
   'settings': { html: settings, w: 600, h: 380 },
   'signup': { html: signup, w: 600, h: 380 },
+  'ledger': { html: ledger, w: 520, h: 530 },
   'form': { html: form, w: FORM_W, h: FORM_H },
   '1-todo': { html: todo, w: 520, h: 330 },
   '2-before': { html: kakeibo(false), w: 520, h: 330 },

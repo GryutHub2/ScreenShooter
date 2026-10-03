@@ -6,7 +6,9 @@ const btnPin = document.getElementById('btnPin')
 const countEl = document.getElementById('count')
 const dkOpen = document.getElementById('dkOpen')
 
-let items = []
+let items = []   // 本体から届いた順（新しい順）
+let shown = []   // 画面に並べている順（設定の並び順）
+let order = 'old'
 let lastNewestId  // いちばん新しい履歴の ID。増えたときだけ一番下まで送るため
 const selected = new Set()  // 選んでいるものの ID
 let anchorId = null         // Shift+クリックの起点（最後にふつうに押したもの）
@@ -77,9 +79,17 @@ function lengthLabel(ms) {
 
 // 本体へ渡す順は、クリックした順ではなく一覧に並んでいる順にそろえる。
 // 落とし先のアプリでの並びが毎回変わらないようにするため
-// （items は新しい順、画面は古い順なので、逆にしてから拾う）
 function orderedSelection() {
-  return items.slice().reverse().filter((it) => selected.has(it.id)).map((it) => it.id)
+  return shown.filter((it) => selected.has(it.id)).map((it) => it.id)
+}
+
+// 並び順。'old' = 古い→新しい（Screenpresso と同じく最新が右下）／'new' = 新しい→古い（最新が左上）／'name' = 名前順
+function sortFor(list, how) {
+  if (how === 'new') return list.slice()
+  if (how === 'name') {
+    return list.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ja', { numeric: true }))
+  }
+  return list.slice().reverse()
 }
 
 function paint() {
@@ -103,18 +113,18 @@ function toggleOne(id) {
 
 // 起点から押した所までをまとめて選ぶ。起点は動かさない（続けて Shift で伸び縮みさせられるように）
 function selectRange(id) {
-  const a = items.findIndex((x) => x.id === (anchorId || id))
-  const b = items.findIndex((x) => x.id === id)
+  const a = shown.findIndex((x) => x.id === (anchorId || id))
+  const b = shown.findIndex((x) => x.id === id)
   if (a < 0 || b < 0) { selectOnly(id); return }
   selected.clear()
-  for (let i = Math.min(a, b); i <= Math.max(a, b); i++) selected.add(items[i].id)
+  for (let i = Math.min(a, b); i <= Math.max(a, b); i++) selected.add(shown[i].id)
   paint()
 }
 
 function selectAll() {
   selected.clear()
   for (const it of items) selected.add(it.id)
-  if (!anchorId || !selected.has(anchorId)) anchorId = items.length ? items[0].id : null
+  if (!anchorId || !selected.has(anchorId)) anchorId = shown.length ? shown[0].id : null
   paint()
 }
 
@@ -139,6 +149,8 @@ function syncDock() {
 
 function render(data) {
   items = (data && data.items) || []
+  order = (data && data.order) || 'old'
+  shown = sortFor(items, order)
   if (data && data.thumbHeight) applyThumbHeight(data.thumbHeight)
   btnPin.classList.toggle('on', !!(data && data.pinned))
 
@@ -150,8 +162,8 @@ function render(data) {
   for (const el of Array.from(strip.querySelectorAll('.card'))) el.remove()
   emptyEl.hidden = items.length > 0
 
-  // 一覧は新しい順で届くが、並べるのは古い順（Screenpresso と同じく最新が右下に来る）
-  for (const it of items.slice().reverse()) {
+  // 一覧は新しい順で届く。並べるのは設定の並び順（既定は古い順＝最新が右下）
+  for (const it of shown) {
     const card = document.createElement('div')
     card.className = 'card' + (selected.has(it.id) ? ' on' : '')
     card.dataset.id = it.id
@@ -200,13 +212,17 @@ function render(data) {
   }
 
   paint()
-  // 新しいものが増えたときだけ最新（一番下）まで送る。消した・名前を変えたなどでは、見ていた位置を動かさない
+  // 新しいものが増えたときだけ最新まで送る。消した・名前を変えたなどでは、見ていた位置を動かさない
   const newest = items.length ? items[0].id : null
   if (newest !== lastNewestId) scrollToNewest()
   lastNewestId = newest
 }
 
-function scrollToNewest() { strip.scrollTop = strip.scrollHeight }
+// 最新は、古い順なら一番下、新しい順なら一番上。名前順では最新の居場所が決まらないので動かさない
+function scrollToNewest() {
+  if (order === 'old') strip.scrollTop = strip.scrollHeight
+  else if (order === 'new') strip.scrollTop = 0
+}
 
 // パネルを出し直したときも最新が見える位置から始める
 document.addEventListener('visibilitychange', () => { if (!document.hidden) scrollToNewest() })
@@ -279,6 +295,12 @@ window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
     e.preventDefault()
     selectAll()
+    return
+  }
+  // クリップボードの画像を一覧に足す（編集画面は開かない）
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+    e.preventDefault()
+    if (!e.repeat) window.api.send('library:paste')
     return
   }
   // 押しっぱなしの連打は1回ぶんだけ（書き込み入りの絵は作るのに時間がかかるので、溜めない）

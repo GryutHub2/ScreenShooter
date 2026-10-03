@@ -44,6 +44,12 @@
     <button class="mini" id="clearRecord" title="割り当てを消す">消す</button>
   </div>
 
+  <div class="row">
+    <label for="keyDelay">時間差で撮る</label>
+    <button class="keyfield" id="keyDelay"></button>
+    <button class="mini" id="clearDelay" title="割り当てを消す">消す</button>
+  </div>
+
   <p class="warn" id="warn" hidden></p>
 </section>
 
@@ -54,7 +60,40 @@
     <button class="mini" id="pickDir">変更…</button>
     <button class="mini" id="openDir">開く</button>
   </div>
-  <p class="note">編集画面の「保存」を押したとき、ここに PNG で入ります。</p>
+  <p class="note">撮った瞬間に、ここへ PNG で入ります。</p>
+</section>
+
+<section>
+  <h2>撮った直後</h2>
+  <div class="row">
+    <label for="afterCapture">開くもの</label>
+    <select class="pick" id="afterCapture">
+      <option value="editor">編集画面を開く</option>
+      <option value="library">開かずに履歴パネルに並べる</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="captureClipboard">クリップボード</label>
+    <select class="pick" id="captureClipboard">
+      <option value="image">絵を入れる</option>
+      <option value="imagePath">絵とファイルの場所を入れる</option>
+      <option value="path">ファイルの場所だけ入れる</option>
+      <option value="off">入れない</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="exportFinish">仕上げ</label>
+    <select class="pick" id="exportFinish">
+      <option value="none">そのまま</option>
+      <option value="border">黒い縁取り</option>
+      <option value="round">角を丸める</option>
+      <option value="shadow">影つき</option>
+      <option value="backdrop">背景つき</option>
+    </select>
+  </div>
+  <p class="note">クリップボードへは<b>自動ぼかしが済んでから</b>入れます（ぼかす前の絵が貼られないように）。撮ってから1〜3秒ほどかかります。
+    仕上げは編集画面の下の帯で最後に選んだものと同じ設定で、コピー・保存のたびに付きます。
+    「開かずに履歴パネルに並べる」にすると、撮った絵は右下の履歴パネルに入り、ダブルクリックで編集画面が開きます。</p>
 </section>
 
 <section>
@@ -63,6 +102,11 @@
   <p class="note">範囲選択のときに、マウスを乗せた窓や、その中の部品（メニューバーなど）に青い枠が付きます。
     そのまま<b>クリック</b>すればその範囲を撮れます（<b>ホイール</b>で範囲を広げたり狭めたり）。
     ドラッグすればこれまで通り自由に選べます。</p>
+  <div class="row">
+    <label for="delaySeconds">時間差の秒数</label>
+    <input type="number" id="delaySeconds" class="num" min="1" max="60" step="1">
+    <span class="note nomargin">秒後に範囲選択を始めます（上の「時間差で撮る」のキーと、トレイのメニュー）</span>
+  </div>
 </section>
 
 <section>
@@ -152,6 +196,15 @@
     <input type="number" id="libLimit" class="num" min="10" max="5000" step="10">
     <span class="note nomargin">枚を超えたら古いものから消えます</span>
   </div>
+
+  <div class="row">
+    <label for="libOrder">並び順</label>
+    <select class="pick" id="libOrder">
+      <option value="old">古い順（最新が右下）</option>
+      <option value="new">新しい順（最新が左上）</option>
+      <option value="name">ファイル名の順</option>
+    </select>
+  </div>
   <p class="note">履歴には「書き込む前の元画像」と「赤枠・矢印などの位置」が入ります。だから
     あとから開き直して、線を動かしたり色を変えたりできます。</p>
 </section>
@@ -161,6 +214,13 @@
   <label class="check"><input type="checkbox" id="sendToMenu"> 右クリックの「送る」に「ScreenShooterで開く」を出す</label>
   <p class="note">画像を右クリック →「その他のオプションを表示」→「送る」→「ScreenShooterで開く」で、その絵をこのアプリで開けます。
   履歴パネルに画像をドラッグして落としても同じです。どちらも保存先フォルダにコピーしてから開くので、元のファイルはそのまま残ります。</p>
+</section>
+
+<section>
+  <h2>起動</h2>
+  <label class="check"><input type="checkbox" id="autoStart"> Windows の起動時に自動で起動する</label>
+  <p class="note">スタートアップ フォルダ（<code>shell:startup</code>）に <code>ScreenShooter.lnk</code> を置きます。チェックを外すと、このアプリを起動するショートカットだけを消します（ほかのショートカットには触りません）。
+    チェックは、切り替えて「保存する」を押したときだけ反映されます。</p>
 </section>
 
 <div class="footer">

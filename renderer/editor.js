@@ -25,8 +25,15 @@ const HALOS = [
 ]
 const HALO_DEFAULT = 0.09
 // 書き出しの仕上げ。値は設定にそのまま入るので、増やすときは main.js の EXPORT_FINISHES も直す
-const FINISHES = ['none', 'border', 'shadow', 'backdrop']
-const FINISH_LABELS = { none: 'そのまま', border: '黒い縁取り', shadow: '影つき', backdrop: '背景つき' }
+const FINISHES = ['none', 'border', 'round', 'shadow', 'backdrop']
+const FINISH_LABELS = { none: 'そのまま', border: '黒い縁取り', round: '角を丸める', shadow: '影つき', backdrop: '背景つき' }
+// 線の種類。値は図形（`dash`）と設定（lineDash）にそのまま入るので、増やすときは main.js の LINE_DASHES も直す
+const LINE_DASHES = ['solid', 'dash', 'dot']
+const DASH_TYPES = new Set(['rect', 'ellipse', 'line', 'arrow'])
+// 四角の角の丸み（px）。main.js の RECT_RADII と同じ
+const RECT_RADII = [0, 6, 12, 20]
+// 拡大鏡の倍率。main.js の ZOOM_FACTORS と同じ
+const ZOOM_FACTORS = [1.5, 2, 2.5, 3, 4]
 
 // 段階を増減したとき、前回の値がボタンに無いと「どれも選ばれていない」状態になるので近い段階に寄せる
 function nearest(list, v) {
@@ -49,6 +56,9 @@ const state = {
   fontSize: 28,
   deco: 'auto',
   halo: HALO_DEFAULT,
+  lineDash: 'solid',  // 四角・丸・直線・矢印の線の種類（LINE_DASHES）
+  rectRadius: 0,      // 四角の角の丸み（RECT_RADII）
+  zoomK: 2,           // 新しく置く拡大鏡の倍率（ZOOM_FACTORS）
   zoom: 1,
   fit: true,
   undo: [],
@@ -63,6 +73,7 @@ const state = {
   orig: null,     // 撮ったときの絵（大きさを変えるときは毎回ここから作り直す）
   scale: 1,       // 撮ったときの絵に対する今の大きさ。img・図形・切り抜きはすべてこの大きさの座標
   cuts: [],       // 省略で抜いた横の帯（撮ったときの絵の座標 [{ y1, y2 }]）。img はこれを抜いてつないだ絵
+  pad: null,      // 手で足した余白 { t, r, b, l, color }（今の絵の px）。切り抜き範囲のまわりに付き、color で塗る
 }
 
 let nextId = 1
@@ -97,7 +108,7 @@ function luminance(hex) {
 
 // 大きさ・省略も元に戻せるよう一緒に積む（図形の座標は絵の大きさ・抜いた帯とセットでないと意味を持たないため）
 function snapshot() {
-  return JSON.stringify({ shapes: state.shapes, crop: state.crop, scale: state.scale, cuts: state.cuts })
+  return JSON.stringify({ shapes: state.shapes, crop: state.crop, scale: state.scale, cuts: state.cuts, pad: state.pad })
 }
 
 function beginChange() { return snapshot() }
@@ -119,6 +130,7 @@ function restore(snap) {
   if ((o.scale || 1) !== state.scale || JSON.stringify(cuts) !== JSON.stringify(state.cuts)) useImage(o.scale || 1, cuts)
   state.shapes = o.shapes
   state.crop = o.crop
+  state.pad = o.pad || null
   state.selectedId = null
   for (const s of state.shapes) if (s.id >= nextId) nextId = s.id + 1
 }
@@ -159,10 +171,13 @@ function drawShape(g, s, list) {
   g.strokeStyle = s.color
   g.fillStyle = s.color
   g.lineWidth = s.width
+  if (DASH_TYPES.has(s.type)) g.setLineDash(dashPattern(s))
 
   if (s.type === 'rect') {
     const r = norm(s)
-    g.strokeRect(r.x, r.y, r.w, r.h)
+    const rad = Math.min(s.radius || 0, r.w / 2, r.h / 2)
+    if (rad > 0) { g.beginPath(); g.roundRect(r.x, r.y, r.w, r.h, rad); g.stroke() }
+    else g.strokeRect(r.x, r.y, r.w, r.h)
   } else if (s.type === 'ellipse') {
     const r = norm(s)
     g.beginPath()
@@ -189,6 +204,15 @@ function drawShape(g, s, list) {
   }
   // スポットライト（spot）は1つずつは描かない。paintScene がまとめて暗幕を塗る
   g.restore()
+}
+
+// 破線・点線の間隔は線の太さに比例させる（太い線で細かい破線にすると、つぶれて実線に見えるため）。
+// 点線は長さ 0 の線を丸い端（lineCap: round）で描いて点にする
+function dashPattern(s) {
+  const w = Math.max(1, s.width || 1)
+  if (s.dash === 'dash') return [w * 3, w * 2]
+  if (s.dash === 'dot') return [0, w * 2]
+  return []
 }
 
 // 番号は持たずに、置いた順から毎回数える。
@@ -318,6 +342,7 @@ function drawArrow(g, s) {
   g.moveTo(s.x1, s.y1)
   g.lineTo(s.x2 - ux * head * 0.85, s.y2 - uy * head * 0.85)
   g.stroke()
+  g.setLineDash([])   // 矢じりは破線にしない
   const px = -uy
   const py = ux
   const hw = head * 0.52
@@ -501,7 +526,9 @@ function placeLens(s) {
   const diag = Math.hypot(f.w, f.h)
   // 既定は2倍。大きな枠でも丸が絵より大きくならないように抑える。
   // 半径は 0.1px 単位（あとで丸めて外へ 0.05px 出ると、それだけで画角が 1px 広がるため）なので、10倍した整数で数える
-  const r0 = Math.floor(Math.max(12, Math.min(diag, Math.max(40, 0.45 * Math.min(c.w, c.h)))) * 10)
+  // 倍率は「直径 ÷ 枠の対角線」なので、半径は対角線 × 倍率 ÷ 2（既定の2倍なら対角線と同じ）
+  const want = diag * (state.zoomK || 2) / 2
+  const r0 = Math.floor(Math.max(12, Math.min(want, Math.max(40, 0.45 * Math.min(c.w, c.h) * (state.zoomK || 2) / 2))) * 10)
   const rMin = Math.min(r0, Math.max(120, Math.ceil(r0 * 0.7)))
   // 中心の丸め（0.05px）で外へ出ないよう、少しだけ余分に空ける
   const outerOf = (r) => {
@@ -815,7 +842,7 @@ let frozenView = null
 
 function view() {
   if (frozenView) return frozenView
-  const c = state.crop
+  const c = padRect()
   let x1 = c.x, y1 = c.y, x2 = c.x + c.w, y2 = c.y + c.h
   for (const s of state.shapes) {
     const b = paintBounds(s)
@@ -832,10 +859,27 @@ function view() {
 function freezeView() { frozenView = view() }
 function unfreezeView() { frozenView = null }
 
-// 画角がはみ出しぶんで広がっているか（ステータスバーの表示に使う）
+// 切り抜き範囲に、手で足した余白を付けた四角。余白が無ければ切り抜き範囲そのもの
+function padRect() {
+  const c = state.crop
+  const p = state.pad
+  if (!p) return c
+  return { x: c.x - p.l, y: c.y - p.t, w: c.w + p.l + p.r, h: c.h + p.t + p.b }
+}
+
+// 余白を検査する（履歴から来た値・ダイアログの値）。全部 0 なら余白なし
+const PAD_COLORS = ['#ffffff', '#000000', 'transparent']
+function cleanPad(p) {
+  if (!p || typeof p !== 'object') return null
+  const n = (v) => Math.max(0, Math.min(4000, Math.round(Number(v) || 0)))
+  const out = { t: n(p.t), r: n(p.r), b: n(p.b), l: n(p.l), color: PAD_COLORS.includes(p.color) ? p.color : '#ffffff' }
+  return out.t || out.r || out.b || out.l ? out : null
+}
+
+// 画角がはみ出しぶんで広がっているか（ステータスバーの表示に使う）。手で足した余白は「はみ出し」に数えない
 function isWidened() {
   const v = view()
-  const c = state.crop
+  const c = padRect()
   return v.w > c.w || v.h > c.h
 }
 
@@ -979,6 +1023,19 @@ const UNDER_TYPES = new Set(['marker', 'spot', 'zoom'])
 // 下の段に回す図形が無い絵は、これまでどおり置いた順に描く（ぼかしを後から置くと矢印の上にかかる、という今までの絵の見た目を変えないため）
 // 絵は切り抜き範囲の中だけに描く。画角が広がっても、切り抜いて捨てた所は透明のまま（出てくると切り抜いた意味がない）
 function paintScene(g, extra) {
+  // 手で足した余白は、切り抜き範囲の外側だけを塗る（透明な絵の下まで塗ると、絵の見え方が変わるため）
+  const p = state.pad
+  if (p && p.color !== 'transparent') {
+    const o = padRect()
+    const c = state.crop
+    g.save()
+    g.beginPath()
+    g.rect(o.x, o.y, o.w, o.h)
+    g.rect(c.x, c.y, c.w, c.h)
+    g.fillStyle = p.color
+    g.fill('evenodd')
+    g.restore()
+  }
   if (state.img) {
     const c = state.crop
     g.save()
@@ -1083,6 +1140,7 @@ function wrapFinish(src, style) {
   const w = src.width
   const h = src.height
   if (style === 'border') return withBorder(src)
+  if (style === 'round') return withRoundCorners(src)
   const m = finishLayout(w, h, style)
   const c = document.createElement('canvas')
   c.width = w + m.pad * 2
@@ -1129,6 +1187,31 @@ function withBorder(src) {
   g.fillRect(0, 0, c.width, c.height)
   g.clearRect(BORDER_PX, BORDER_PX, src.width, src.height)
   g.drawImage(src, BORDER_PX, BORDER_PX)
+  return c
+}
+
+// 角を丸める。余白も影も付けず、絵の四隅を丸く切り落として細い灰色の縁を引く（Screenpresso の「角の丸いふち」）。
+// 切り落とした角は透明（白い所に貼ると白く、暗い所では暗く見えて、どちらでも角だけが浮かない）
+function withRoundCorners(src) {
+  const w = src.width
+  const h = src.height
+  const rad = Math.round(Math.min(24, Math.max(8, Math.min(w, h) * 0.03)))
+  const line = Math.max(1, Math.round(Math.min(w, h) / 600))
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const g = c.getContext('2d')
+  g.beginPath()
+  g.roundRect(0, 0, w, h, rad)
+  g.save()
+  g.clip()
+  g.drawImage(src, 0, 0)
+  g.restore()
+  g.beginPath()
+  g.roundRect(line / 2, line / 2, w - line, h - line, rad - line / 2)
+  g.strokeStyle = 'rgba(0,0,0,.28)'
+  g.lineWidth = line
+  g.stroke()
   return c
 }
 
@@ -1261,6 +1344,7 @@ function flushLibrary() {
       crop: state.crop,
       scale: state.scale,
       cuts: state.cuts,
+      pad: state.pad,
       thumbDataUrl: exportThumb(),
     })
   } catch (err) {
@@ -1271,7 +1355,7 @@ function flushLibrary() {
 // 今見えている絵が、撮った時のままかどうか。
 // 違うときだけ「_書き込み.png」を別に出す（同じ絵を2個作らないため）
 function isEdited() {
-  return state.shapes.length > 0 || isCropped() || state.scale !== 1 || state.cuts.length > 0
+  return state.shapes.length > 0 || isCropped() || state.scale !== 1 || state.cuts.length > 0 || !!state.pad
 }
 
 // 書き出す絵が元の絵と違うか。仕上げだけでも違う絵になるので、原本を動かさず「_書き込み.png」を別に出す
@@ -1345,7 +1429,7 @@ const Y_KEYS = ['y1', 'y2', 'cy', 'ty']
 
 // mapY は縦の位置の換算（省略があると、縦は帯の抜け具合で倍率どおりにならないため）。無ければ横と同じ k 倍
 function scaleShape(s, k, mapY) {
-  for (const key of ['x1', 'x2', 'cx', 'r', 'tx', 'width', 'fontSize']) {
+  for (const key of ['x1', 'x2', 'cx', 'r', 'tx', 'width', 'fontSize', 'radius']) {
     if (typeof s[key] === 'number') s[key] = r6(s[key] * k)
   }
   const fy = mapY || ((v) => v * k)
@@ -1567,6 +1651,10 @@ function resizeTo(s) {
   const fy = state.cuts.length ? (y) => origToCur(L1, curToOrig(L0, y, false)) : null
   useImage(s, state.cuts)
   for (const sh of state.shapes) { scaleShape(sh, k, fy); fitTextBox(sh) }
+  if (state.pad) {
+    const p = state.pad
+    state.pad = cleanPad({ t: p.t * k, r: p.r * k, b: p.b * k, l: p.l * k, color: p.color })
+  }
   if (full) {
     state.crop = { x: 0, y: 0, w: state.imgW, h: state.imgH }
   } else {
@@ -1610,7 +1698,7 @@ function rzView() {
 // 撮ったときの大きさでの出来上がり範囲。切り抜きもはみ出しも無ければ元の絵の大きさそのもの。
 // 今の大きさ（四捨五入ずみ）から逆算すると倍率が 2 から 1.997 のようにずれ、整数倍の拡大にならないため
 function rzBase() {
-  if (!isCropped() && !isWidened() && !state.cuts.length) return { w: state.orig.naturalWidth, h: state.orig.naturalHeight }
+  if (!isCropped() && !isWidened() && !state.cuts.length && !state.pad) return { w: state.orig.naturalWidth, h: state.orig.naturalHeight }
   const v = view()
   return { w: v.w / state.scale, h: v.h / state.scale }
 }
@@ -1675,6 +1763,7 @@ function openResize() {
   rzEls.width.value = String(last.width > 0 ? last.width : v.w)
   rzEls.height.value = String(last.height > 0 ? last.height : v.h)
   document.getElementById('rzReset').disabled = state.scale === 1
+  fillPadInputs()
   rzDlg.hidden = false
   rzRefresh()
   rzEls[rzMode].focus()
@@ -1722,6 +1811,45 @@ document.getElementById('rzReset').addEventListener('click', () => {
 })
 // 暗い所（ダイアログの外）を押したら閉じる
 rzDlg.addEventListener('mousedown', (e) => { if (e.target === rzDlg) closeResize() })
+
+// ---- 余白（同じダイアログの下半分）。余白は今の絵の px で持ち、大きさを変えると一緒に伸び縮みする
+const padEls = { t: document.getElementById('padT'), r: document.getElementById('padR'), b: document.getElementById('padB'), l: document.getElementById('padL') }
+const padColorEl = document.getElementById('padColor')
+let padLast = null   // 前回付けた余白（editor:init で本体から届く）。次に開いたとき最初に入れるだけ
+
+function fillPadInputs() {
+  const p = state.pad || padLast || { t: 0, r: 0, b: 0, l: 0, color: '#ffffff' }
+  for (const k of Object.keys(padEls)) padEls[k].value = String(Math.round(p[k] || 0))
+  padColorEl.value = PAD_COLORS.includes(p.color) ? p.color : '#ffffff'
+  document.getElementById('padClear').disabled = !state.pad
+}
+
+function applyPad(pad) {
+  commitText()
+  const before = beginChange()
+  state.pad = pad
+  commitChange(before)
+  closeResize()
+  layout()
+  draw()
+  updateUi()
+}
+
+document.getElementById('padApply').addEventListener('click', () => {
+  const p = cleanPad({ t: padEls.t.value, r: padEls.r.value, b: padEls.b.value, l: padEls.l.value, color: padColorEl.value })
+  if (!p) { toast('余白の幅を入れてください（px）'); return }
+  padLast = p
+  window.api.send('app:setDefaults', { pad: p })
+  applyPad(p)
+  toast('まわりに余白を足しました（Ctrl+Z で戻せます）')
+})
+document.getElementById('padClear').addEventListener('click', () => {
+  applyPad(null)
+  toast('余白を外しました（Ctrl+Z で戻せます）')
+})
+document.getElementById('padSame').addEventListener('click', () => {
+  for (const k of ['r', 'b', 'l']) padEls[k].value = padEls.t.value
+})
 
 // ---------------------------------------------------------------- 表示倍率
 
@@ -1825,6 +1953,10 @@ function toggleFocus() {
       crop: state.crop,
       scale: state.scale,
       cuts: state.cuts,
+      pad: state.pad,
+      lineDash: state.lineDash,
+      rectRadius: state.rectRadius,
+      zoomK: state.zoomK,
       // 集中モードははみ出さない（つかめない）ので、つかむ前の道具を渡す
       tool: state.tool === 'hand' ? handBackTool : state.tool,
       color: state.color,
@@ -2118,13 +2250,9 @@ function autoSizeTextEditor() {
   textEdit.style.height = (textEdit.scrollHeight + 4) + 'px'
 }
 
-function openTextEditor(s, isNew) {
-  commitText()
-  editingShape = s
-  editingIsNew = !!isNew
+// 入力欄の字の大きさ・色・折り返しを図形に合わせる（開いたときと、入力中に大きさを変えたとき）
+function styleTextEditor(s) {
   const px = s.fontSize * state.zoom
-  textEdit.hidden = false
-  textEdit.value = s.text || ''
   // 吹き出しの字は枠の色ではなく、地に合わせた黒（暗い地なら白）
   const ink = s.bubble ? bubbleColors(s).ink : s.color
   textEdit.style.color = ink
@@ -2135,10 +2263,19 @@ function openTextEditor(s, isNew) {
   textEdit.classList.toggle('box', !!s.box)
   textEdit.classList.toggle('dark', !!s.box && luminance(ink) > 0.62)
   textEdit.classList.toggle('bubble', !!s.bubble)
-  textEdit.scrollTop = 0
-  freezeView()
   positionTextEditor()
   autoSizeTextEditor()
+}
+
+function openTextEditor(s, isNew) {
+  commitText()
+  editingShape = s
+  editingIsNew = !!isNew
+  textEdit.hidden = false
+  textEdit.value = s.text || ''
+  textEdit.scrollTop = 0
+  freezeView()
+  styleTextEditor(s)
   draw()
   setTimeout(() => {
     textEdit.focus()
@@ -2273,6 +2410,8 @@ cv.addEventListener('pointerdown', (e) => {
     width: state.tool === 'marker' ? state.markerWidth : state.lineWidth,
     fontSize: state.fontSize, x1: p.x, y1: p.y, x2: p.x, y2: p.y,
   }
+  if (DASH_TYPES.has(state.tool) && state.lineDash !== 'solid') pending.dash = state.lineDash
+  if (state.tool === 'rect' && state.rectRadius > 0) pending.radius = state.rectRadius
   // 鉛筆・蛍光ペンは x1..x2 を「線を囲む枠」として使い、線そのものは points に持つ
   if (state.tool === 'pen' || state.tool === 'marker') pending.points = [{ x: r1(p.x), y: r1(p.y) }]
   // 描いている最中の見た目用。離したときに線の下全体で測り直す（endDrag）
@@ -2599,6 +2738,13 @@ function applyStyle(patch) {
     if (patch.fontSize && s.type === 'text') { s.fontSize = patch.fontSize; fitTextBox(s) }
     if (patch.deco && s.type === 'text') s.deco = patch.deco
     if (patch.halo && s.type === 'text') s.halo = patch.halo
+    if (patch.lineDash && DASH_TYPES.has(s.type)) { if (patch.lineDash === 'solid') delete s.dash; else s.dash = patch.lineDash }
+    if (typeof patch.rectRadius === 'number' && s.type === 'rect') { if (patch.rectRadius > 0) s.radius = patch.rectRadius; else delete s.radius }
+    // 拡大鏡の倍率は、のぞき窓の中心を動かさずに丸の大きさで変える
+    if (patch.zoomK && s.type === 'zoom') {
+      const f = norm(s)
+      s.r = r1(Math.max(12, Math.hypot(f.w, f.h) * patch.zoomK / 2))
+    }
     // マーカーは文字サイズで丸ごと大きさが変わる（中心はそのまま）
     if (patch.fontSize && s.type === 'step') {
       const r0 = norm(s)
@@ -2613,9 +2759,40 @@ function applyStyle(patch) {
   window.api.send('app:setDefaults', {
     color: state.color, markerColor: state.markerColor, lineWidth: state.lineWidth, markerWidth: state.markerWidth,
     fontSize: state.fontSize, deco: state.deco, halo: state.halo,
+    lineDash: state.lineDash, rectRadius: state.rectRadius, zoomK: state.zoomK,
   })
   updateUi()
   draw()
+}
+
+// Ctrl＋＋／− で、選んでいる図形（無ければ持っている道具）の大きさを1段ずつ変える。
+// 文字・吹き出し・番号は文字の大きさ、蛍光ペンは蛍光ペンの太さ、それ以外は線の太さ
+function stepSize(dir) {
+  const sel = byId(state.selectedId)
+  const kind = editingShape ? kindOf(editingShape) : sel ? kindOf(sel) : state.tool
+  const step = (list, v) => {
+    const i = list.indexOf(nearest(list, v))
+    return list[Math.max(0, Math.min(list.length - 1, i + dir))]
+  }
+  if (kind === 'text' || kind === 'bubble' || kind === 'step') {
+    const cur = editingShape ? editingShape.fontSize : sel ? sel.fontSize : state.fontSize
+    const next = step(FONT_SIZES, cur)
+    if (editingShape) {
+      // 入力中は確定前なので「元に戻す」には積まず、入力欄の字の大きさだけ合わせ直す
+      editingShape.fontSize = next
+      state.fontSize = next
+      styleTextEditor(editingShape)
+      window.api.send('app:setDefaults', { fontSize: next })
+      updateUi()
+      draw()
+      return
+    }
+    applyStyle({ fontSize: next })
+  } else if (kind === 'marker') {
+    applyStyle({ markerWidth: step(MARKER_WIDTHS, sel ? sel.width : state.markerWidth) })
+  } else if (kind !== 'spot' && kind !== 'select' && kind !== 'hand' && kind !== 'crop' && kind !== 'cut') {
+    applyStyle({ lineWidth: step(WIDTHS, sel ? sel.width : state.lineWidth) })
+  }
 }
 
 document.querySelectorAll('.tool').forEach((b) => {
@@ -2647,6 +2824,26 @@ for (const n of FONT_SIZES) {
   fontSizeEl.appendChild(o)
 }
 fontSizeEl.addEventListener('change', () => applyStyle({ fontSize: Number(fontSizeEl.value) }))
+
+const lineDashEl = document.getElementById('lineDash')
+const rectRadiusEl = document.getElementById('rectRadius')
+const zoomKEl = document.getElementById('zoomK')
+const DASH_LABELS = { solid: '実線', dash: '破線', dot: '点線' }
+function fillPick(el, values, label) {
+  for (const v of values) {
+    const o = document.createElement('option')
+    o.value = String(v)
+    o.textContent = label(v)
+    el.appendChild(o)
+  }
+}
+fillPick(lineDashEl, LINE_DASHES, (v) => DASH_LABELS[v])
+fillPick(rectRadiusEl, RECT_RADII, (v) => (v ? '角丸 ' + v : '角 直角'))
+fillPick(zoomKEl, ZOOM_FACTORS, (v) => v + ' 倍')
+// 選んだあとプルダウンに残ると、矢印キーで図形を動かすつもりが選択肢が変わるので手放す
+lineDashEl.addEventListener('change', () => { applyStyle({ lineDash: lineDashEl.value }); lineDashEl.blur() })
+rectRadiusEl.addEventListener('change', () => { applyStyle({ rectRadius: Number(rectRadiusEl.value) }); rectRadiusEl.blur() })
+zoomKEl.addEventListener('change', () => { applyStyle({ zoomK: Number(zoomKEl.value) }); zoomKEl.blur() })
 fontDecoEl.addEventListener('change', () => applyStyle({ deco: fontDecoEl.value }))
 
 const fontHaloEl = document.getElementById('fontHalo')
@@ -2861,9 +3058,14 @@ function reserveOptsWidth() {
   const opts = document.getElementById('opts')
   const groups = ['widths', 'markerWidths', 'fonts'].map((id) => document.getElementById(id))
   const keep = groups.map((g) => g.hidden).concat(fontDecoEl.hidden, fontHaloEl.hidden)
+  const keepPicks = [lineDashEl.hidden, rectRadiusEl.hidden, zoomKEl.hidden]
   opts.style.minWidth = ''
   fontDecoEl.hidden = false
   fontHaloEl.hidden = false
+  // 太さの欄でいちばん広くなるのは四角（線の種類＋角の丸み）。倍率はそれより狭いので測らない
+  lineDashEl.hidden = false
+  rectRadiusEl.hidden = false
+  zoomKEl.hidden = true
   let w = 0
   for (const g of groups) {
     for (const x of groups) x.hidden = x !== g
@@ -2872,6 +3074,7 @@ function reserveOptsWidth() {
   groups.forEach((g, i) => { g.hidden = keep[i] })
   fontDecoEl.hidden = keep[3]
   fontHaloEl.hidden = keep[4]
+  ;[lineDashEl.hidden, rectRadiusEl.hidden, zoomKEl.hidden] = keepPicks
   opts.style.minWidth = Math.ceil(w) + 'px'
 }
 
@@ -2906,6 +3109,13 @@ function updateUi() {
   // 蛍光ペンは専用の太さを出す。スポットライトの暗さは固定なので、太さも出さない
   document.getElementById('widths').hidden = kind === 'text' || kind === 'bubble' || kind === 'step' || kind === 'marker' || kind === 'spot'
   document.getElementById('markerWidths').hidden = kind !== 'marker'
+  // 線の種類は四角・丸・直線・矢印、角の丸みは四角、倍率は拡大鏡のときだけ。選んでいる図形があればその値を出す
+  lineDashEl.hidden = !DASH_TYPES.has(kind)
+  rectRadiusEl.hidden = kind !== 'rect'
+  zoomKEl.hidden = kind !== 'zoom'
+  lineDashEl.value = sel && DASH_TYPES.has(sel.type) ? (sel.dash || 'solid') : state.lineDash
+  rectRadiusEl.value = String(sel && sel.type === 'rect' ? nearest(RECT_RADII, sel.radius || 0) : state.rectRadius)
+  zoomKEl.value = String(sel && sel.type === 'zoom' ? nearest(ZOOM_FACTORS, zoomScale(sel)) : state.zoomK)
 
   // 縦長のときだけ「分割保存」を出す（ふつうの絵では使わないため）
   const split = document.getElementById('btnSplit')
@@ -2937,7 +3147,8 @@ function updateTip() {
   if (!state.savedPath) { tip.textContent = '保存先に書き出せませんでした（「保存」でやり直せます）'; return }
   const what = (state.shapes.length || isCropped()) ? '書き込み'
     : state.cuts.length ? '省略'
-    : state.scale !== 1 ? 'サイズ変更' : '仕上げ（' + FINISH_LABELS[state.finish] + '）'
+    : state.scale !== 1 ? 'サイズ変更'
+    : state.pad ? '余白' : '仕上げ（' + FINISH_LABELS[state.finish] + '）'
   tip.textContent = needsExport()
     ? what + 'は「保存」で ' + baseNameOf(state.savedPath) + '_書き込み.png として別に出ます（元の絵はそのまま）'
     : '保存済み： ' + fileNameOf(state.savedPath)
@@ -3002,7 +3213,17 @@ function baseNameOf(p) {
 
 // ---------------------------------------------------------------- キーボード
 
+// Ctrl と一緒に押した ＋／− の向き。キーの位置で見る（日本語配列の ＋ は「;」の位置で、Shift の有無で文字が変わるため）
+function sizeKeyDir(e) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return 0
+  if (e.code === 'Semicolon' || e.code === 'Equal' || e.code === 'NumpadAdd') return 1
+  if (e.code === 'Minus' || e.code === 'NumpadSubtract') return -1
+  return 0
+}
+
 window.addEventListener('keydown', (e) => {
+  const sizeDir = sizeKeyDir(e)
+  if (sizeDir && rzDlg.hidden) { e.preventDefault(); stepSize(sizeDir); return }
   if (e.target === textEdit) {
     if (e.key === 'Escape') { e.preventDefault(); cancelText() }
     else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitText() }
@@ -3012,6 +3233,8 @@ window.addEventListener('keydown', (e) => {
   // 大きさのダイアログを出している間は、道具の持ち替えなどのキーを効かせない（数字を打つとき「V」などで道具が変わるため）
   if (!rzDlg.hidden) {
     if (e.key === 'Escape') { e.preventDefault(); closeResize() }
+    // 余白の欄で Enter を押したときは余白を付ける（大きさを変えるのではなく）
+    else if (e.key === 'Enter' && e.target && e.target.closest && e.target.closest('#padBox')) { e.preventDefault(); document.getElementById('padApply').click() }
     else if (e.key === 'Enter') { e.preventDefault(); rzApply() }
     return
   }
@@ -3119,8 +3342,12 @@ window.api.on('editor:init', (d) => {
   state.deco = DECOS.includes(d.deco) ? d.deco : state.deco
   state.halo = nearest(HALOS.map((h) => h.v), Number(d.halo) || state.halo)
   state.finish = FINISHES.includes(d.finish) ? d.finish : 'none'
+  state.lineDash = LINE_DASHES.includes(d.lineDash) ? d.lineDash : 'solid'
+  state.rectRadius = RECT_RADII.includes(d.rectRadius) ? d.rectRadius : 0
+  state.zoomK = ZOOM_FACTORS.includes(d.zoomK) ? d.zoomK : 2
   setPresets(d.stylePresets)
   rzLast = d.resizeLast || null
+  padLast = cleanPad(d.padLast)
   state.libraryId = d.libraryId || null
   state.savedPath = d.savedPath || null
   state.focus = !!d.focus
@@ -3140,6 +3367,9 @@ window.api.on('editor:init', (d) => {
     if (DECOS.includes(carry.deco)) state.deco = carry.deco
     if (Number(carry.halo) > 0) state.halo = nearest(HALOS.map((h) => h.v), Number(carry.halo))
     if (FINISHES.includes(carry.finish)) state.finish = carry.finish
+    if (LINE_DASHES.includes(carry.lineDash)) state.lineDash = carry.lineDash
+    if (RECT_RADII.includes(carry.rectRadius)) state.rectRadius = carry.rectRadius
+    if (ZOOM_FACTORS.includes(carry.zoomK)) state.zoomK = carry.zoomK
     if (carry.savedPath) state.savedPath = carry.savedPath
     state.copied = !!carry.copied
   }
@@ -3166,6 +3396,7 @@ window.api.on('editor:init', (d) => {
       for (const s of state.shapes) if (s.id >= nextId) nextId = s.id + 1
     }
     if (from.crop && from.crop.w > 0 && from.crop.h > 0) state.crop = from.crop
+    state.pad = cleanPad(from.pad)
 
     // 履歴パネルの Ctrl+C 用の見えない窓。Ctrl+C と同じ exportPNG() で書き出して返すだけ（窓は本体が捨てる）
     // 画角の左上（元の絵の座標）も返す。浮かせるとき、撮った位置にぴったり重ねるのに使う
@@ -3183,12 +3414,43 @@ window.api.on('editor:init', (d) => {
     draw()
     if (d.addShapes) addShapesFromMain(d.addShapes)
     if (carry && carry.privNotice) showPrivNotice(carry.privNotice)
-    if (d.autoBlur || (carry && carry.findPrivate)) findPrivate(false)
+    afterOpen(d, carry)
     // プルダウンの幅は字の形が読み込まれてから決まるので、そろったら測り直す
     document.fonts.ready.then(() => { reserveOptsWidth(); layout(); draw() })
   }
   img.src = d.dataUrl
 })
+
+// 開いたあとに裏で続けること。撮った直後は「自動ぼかし → クリップボードへ」の順。
+// コピーは自動ぼかしが済んでから（先に入れると、ぼかす前の絵が貼られてしまうため）。
+// background は、撮った直後に編集画面を出さない設定のときの見えない窓。済んだら履歴へ書いて本体に知らせる
+async function afterOpen(d, carry) {
+  try {
+    let blurred = 0
+    if (d.autoBlur || (carry && carry.findPrivate)) blurred = await findPrivate(false)
+    if (!carry && (d.copyMode === 'image' || d.copyMode === 'imagePath')) await copyAfterCapture(d.copyMode, !!d.background)
+    if (d.background) {
+      flushLibrary()
+      window.api.send('editor:backgroundDone', { blurred })
+    }
+  } catch (err) {
+    console.error('撮った直後の処理に失敗:', err)
+    if (d.background) window.api.send('editor:backgroundDone', { blurred: 0, error: String(err) })
+  }
+}
+
+// 描いている・打っている最中でないときまで待つ（whenIdle の Promise 版）
+function idle() { return new Promise((resolve) => whenIdle(resolve)) }
+
+async function copyAfterCapture(mode, quiet) {
+  await idle()
+  // 自分で先にコピーしていたら、それを上書きしない
+  if (state.copied) return
+  const r = await window.api.invoke('app:copyCaptured', { dataUrl: exportPNG(), path: state.savedPath, mode })
+  if (!r || !r.ok) return
+  state.copied = true
+  if (!quiet) toast('撮った絵をクリップボードに入れました' + (mode === 'imagePath' ? '（ファイルの場所も）' : ''))
+}
 
 // 道具を出すかどうかは本体側がカーソルの実位置で決めて送ってくる。
 // 画面側の mouseleave は、窓の枠ぎわや「つかんで動かす」領域の上を通ると取りこぼす
@@ -3255,9 +3517,10 @@ function whenIdle(fn) {
 // 文字を読むのは本体（Windows の文字読み取り）。読んでいる間も編集は続けられる。
 // manual はボタンから押したとき。自動のときは、失敗しても見つからなくても何も出さない。
 // 読んでいる間のボタンの文字は「自動ぼかし」より短くする（長くすると下の帯が1行に収まらず、右端の倍率が窓の外に出る）
+// 置いたぼかしの数を返す（撮った直後の処理が、置き終わるまで待ってからコピーするため）
 async function findPrivate(manual) {
-  if (privScanning || !state.img) return
-  if (!state.libraryId) { if (manual) toast('この絵は読み取れません'); return }
+  if (privScanning || !state.img) return 0
+  if (!state.libraryId) { if (manual) toast('この絵は読み取れません'); return 0 }
   privScanning = true
   btnAutoBlur.disabled = true
   btnAutoBlur.textContent = '確認中…'
@@ -3266,15 +3529,16 @@ async function findPrivate(manual) {
   privScanning = false
   btnAutoBlur.disabled = false
   btnAutoBlur.textContent = '自動ぼかし'
-  if (!r || !Array.isArray(r.boxes)) { if (manual) toast('文字を読み取れませんでした'); return }
-  whenIdle(() => placePrivateBlurs(r.boxes, manual))
+  if (!r || !Array.isArray(r.boxes)) { if (manual) toast('文字を読み取れませんでした'); return 0 }
+  await idle()
+  return placePrivateBlurs(r.boxes, manual)
 }
 
 // 見つかった四角にぼかしを置く。ふつうのぼかし（blur）なので、動かす・消す・Ctrl+Z 1回でまとめて戻すができる。
 // 読んでいる間に切り抜いたときは、今の切り抜き範囲の中だけに置く（外に出すと画角が広がって切り抜けなくなるため）。
 // すでにぼかしてある所には重ねない（手で置いたぼかしや、前に自動で置いたものを増やさないため）
 function placePrivateBlurs(boxes, manual) {
-  if (!state.img) return
+  if (!state.img) return 0
   const c = state.crop
   const blurs = state.shapes.filter((sh) => sh.type === 'blur').map(norm)
   const before = beginChange()
@@ -3304,7 +3568,7 @@ function placePrivateBlurs(boxes, manual) {
   }
   if (!added) {
     if (manual) toast('新しく見つかったものはありませんでした（見落としはあるので、自分の目でも確認してください）')
-    return
+    return 0
   }
   commitChange(before)
   updateUi()
@@ -3312,6 +3576,7 @@ function placePrivateBlurs(boxes, manual) {
   // 読み終わる前にコピーしていたら、クリップボードの絵にはぼかしが入っていない
   showPrivNotice('個人情報・APIキーらしきものを' + added + 'か所見つけてぼかしました。見落としが必ずあるので、必ず自分の目でも確認してください。'
     + (state.copied ? '（ぼかす前にコピーした絵にはぼかしが入っていません。もう一度コピーしてください）' : ''))
+  return added
 }
 
 btnAutoBlur.addEventListener('click', () => findPrivate(true))

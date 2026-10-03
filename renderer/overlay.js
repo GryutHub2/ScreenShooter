@@ -29,8 +29,10 @@ let startX = 0
 let startY = 0
 let lastX = 0
 let lastY = 0
-let curX = -1      // いまのカーソル位置（吸い付き枠の計算に使う）
+let curX = -1      // いまのカーソル位置（吸い付き枠の計算に使う）。矢印キーで動かすと実際のカーソルとずれる
 let curY = -1
+let rawX = null    // 最後に届いた本物のカーソル位置。ここから動いたら、矢印キーで動かした分は捨てる
+let rawY = null
 
 // ウィンドウ吸い付き
 let winRects = null    // [{ r:[x,y,w,h], c:[[x,y,w,h], ...] }, ...] 手前の窓が先
@@ -199,12 +201,23 @@ function cancel() {
   window.api.send('overlay:cancel')
 }
 
+// 本物のカーソルが動いていなければ、矢印キーで動かした位置を使う
+function pointFrom(e) {
+  const x = clampX(e.clientX)
+  const y = clampY(e.clientY)
+  const moved = rawX === null || Math.abs(x - rawX) > 0.01 || Math.abs(y - rawY) > 0.01
+  rawX = x
+  rawY = y
+  return moved || curX < 0 ? { x, y, real: true } : { x: curX, y: curY, real: false }
+}
+
 window.addEventListener('pointerdown', (e) => {
   if (done) return
   if (e.button !== 0) { cancel(); return }
+  const p = pointFrom(e)
   dragging = true
-  startX = lastX = clampX(e.clientX)
-  startY = lastY = clampY(e.clientY)
+  startX = lastX = p.x
+  startY = lastY = p.y
   snapEl.hidden = true
   dimEl.hidden = true
   guideV.hidden = true
@@ -218,8 +231,10 @@ window.addEventListener('pointerdown', (e) => {
 
 window.addEventListener('pointermove', (e) => {
   if (done) return
-  const x = clampX(e.clientX)
-  const y = clampY(e.clientY)
+  const p = pointFrom(e)
+  if (!p.real) return
+  const x = p.x
+  const y = p.y
   curX = x
   curY = y
   if (dragging) {
@@ -237,8 +252,10 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', (e) => {
   if (done || !dragging) return
   dragging = false
-  lastX = clampX(e.clientX)
-  lastY = clampY(e.clientY)
+  // 押したまま矢印キーで動かしていたら、その位置で離したことにする
+  const p = pointFrom(e)
+  lastX = p.x
+  lastY = p.y
   const r = currentRect()
   // ほとんど動かさずに離した＝クリック。吸い付き枠があればそれを撮る
   if (r.w < 5 || r.h < 5) {
@@ -264,11 +281,36 @@ window.addEventListener('contextmenu', (e) => { e.preventDefault(); cancel() })
 window.addEventListener('keydown', (e) => {
   if (done) return
   if (e.key === 'Escape') { e.preventDefault(); cancel(); return }
+  if (e.key.startsWith('Arrow')) { e.preventDefault(); nudge(e); return }
   if (e.code === 'Space') {
     e.preventDefault()
     finish({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight })
   }
 })
+
+// 矢印キーで、保存される絵の1ピクセル（Shift で10ピクセル）ずつ動かす。
+// 押す前は始点（＝十字の位置）、ドラッグ中は終点を動かす。マウスを動かすと本物のカーソルの位置に戻る
+function nudge(e) {
+  if (curX < 0 && !dragging) return
+  const n = e.shiftKey ? 10 : 1
+  const dx = (e.key === 'ArrowLeft' ? -n : e.key === 'ArrowRight' ? n : 0) / scaleX
+  const dy = (e.key === 'ArrowUp' ? -n : e.key === 'ArrowDown' ? n : 0) / scaleY
+  if (dragging) {
+    lastX = clampX(lastX + dx)
+    lastY = clampY(lastY + dy)
+    curX = lastX
+    curY = lastY
+    updateSelection()
+    updateLoupe(lastX, lastY)
+    return
+  }
+  curX = clampX(curX + dx)
+  curY = clampY(curY + dy)
+  updateGuides(curX, curY)
+  computeSnap(curX, curY)
+  renderSnap()
+  updateLoupe(curX, curY)
+}
 
 // カーソルがこの画面に無い状態で開いたときも拡大鏡を出しておく
 window.addEventListener('DOMContentLoaded', () => {

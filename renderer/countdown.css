@@ -1,0 +1,29 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+}
+body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+#ring {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: rgba(20, 22, 26, .78);
+  border: 4px solid #e8453c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+#num { color: #fff; font-size: 84px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+#cap {
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(20, 22, 26, .78);
+}

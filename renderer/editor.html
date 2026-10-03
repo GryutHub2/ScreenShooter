@@ -106,6 +106,10 @@
     <button class="wd" data-width="7" title="ふつう"><i></i></button>
     <button class="wd" data-width="12" title="太い"><i></i></button>
     <button class="wd" data-width="20" title="いちばん太い"><i></i></button>
+    <!-- 選択肢は LINE_DASHES・RECT_RADII・ZOOM_FACTORS から作る（editor.js）。道具に合わせて必要なものだけ出す -->
+    <select class="pick" id="lineDash" title="線の種類（四角・丸・直線・矢印）"></select>
+    <select class="pick" id="rectRadius" title="四角の角の丸み"></select>
+    <select class="pick" id="zoomK" title="拡大鏡の倍率（丸の右下の四角をドラッグしても変わります）"></select>
   </div>
 
   <div class="group" id="markerWidths" hidden>
@@ -168,7 +172,7 @@
 <div id="statusbar">
   <span id="stSize"></span>
   <button class="mini" id="btnResize"
-    title="絵の大きさを変えます（％・幅・高さで指定）。何度変えても撮ったときの絵から作り直すので、画質は落ち重なりません">サイズ</button>
+    title="絵の大きさを変えます（％・幅・高さで指定）。何度変えても撮ったときの絵から作り直すので、画質は落ち重なりません。まわりに余白を足すのもここです">サイズ</button>
   <span class="dot">・</span>
   <span id="stTip"></span>
   <span class="spacer"></span>
@@ -219,7 +223,7 @@
 <!-- 絵の大きさを変える。縦横の比はいつも保つ（比を崩す指定は文字がゆがむだけなので置かない） -->
 <div id="resizeDlg" hidden>
   <div id="rzBox">
-    <div id="rzTitle">画像の大きさを変える</div>
+    <div id="rzTitle">画像の大きさと余白</div>
     <div class="rzNowRow">いまの大きさ：<span id="rzNow"></span></div>
     <label class="rzRow">
       <input type="radio" name="rzMode" value="pct"><span class="rzName">割合</span>
@@ -252,6 +256,30 @@
       <span class="spacer"></span>
       <button class="txt" id="rzCancel">やめる</button>
       <button class="txt primary" id="rzOk">OK</button>
+    </div>
+    <!-- 余白は大きさとは別の操作。「余白を付ける」で付き、大きさの OK とは関係しない -->
+    <div id="padBox">
+      <div class="padTitle">まわりに余白を足す（説明を書き込む場所を作る）</div>
+      <div class="padRow">
+        <label>上 <input type="number" id="padT" min="0" max="4000" step="10"></label>
+        <label>右 <input type="number" id="padR" min="0" max="4000" step="10"></label>
+        <label>下 <input type="number" id="padB" min="0" max="4000" step="10"></label>
+        <label>左 <input type="number" id="padL" min="0" max="4000" step="10"></label>
+        <span class="rzUnit">px</span>
+      </div>
+      <div class="padRow">
+        <label>色
+          <select class="pick" id="padColor">
+            <option value="#ffffff">白</option>
+            <option value="#000000">黒</option>
+            <option value="transparent">透明</option>
+          </select>
+        </label>
+        <button class="rzChip" id="padSame" title="上の欄の数を4辺すべてに入れる">4辺を上と同じに</button>
+        <span class="spacer"></span>
+        <button class="txt" id="padClear">余白を外す</button>
+        <button class="txt primary" id="padApply">余白を付ける</button>
+      </div>
     </div>
   </div>
 </div>

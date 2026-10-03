@@ -48,6 +48,8 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 | `record` | record（録画の始め方〜停止。grabClip で撮る）＋ out/record-confirm.png（確認画面） | なし |
 | `words` | `--kind=regex`：words（「自動でぼかす言葉」に正規表現）／`--kind=label`：labels（「見出しとして探す言葉」に「紹介コード」）。どちらも登録 →「自動ぼかし」で紹介コードがぼける。編集画面の右に設定画面を縮めて重ねる | `--kind`、`--gifw=1000` |
 | `steps` | steps（番号マーカーを置く・Shift でそろえる・右クリックで消す） | なし |
+| `bubble` | bubble（吹き出しを置いて文字を打つ → しっぽの先をドラッグしてボタンを指す） | なし |
+| `cut` | cut（支出の表の途中の行を X でドラッグして抜く） | なし |
 | `polish` | resize / finish（サイズ 50%・仕上げ「背景つき」と「見る」。編集画面の窓ごと録る） | `--only`、`--gifw=1000` |
 | `focus` | focus（集中モードに入る → 道具が出る → 解除。窓ごと録る） | `--gifw=1000` |
 | `editor-calib` | 撮らない。`--page=<架空の画面>` を編集画面で開き、窓全体の静止画と部品の位置を残す | `--page` `--height` |

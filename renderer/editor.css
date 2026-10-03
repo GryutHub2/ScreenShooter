@@ -372,6 +372,22 @@ body.focus #finishPreview { padding: 10px 10px 6px; -webkit-app-region: no-drag;
 #rzHint { min-height: 22px; margin-top: 4px; color: #ffd27a; font-size: 14.5px; line-height: 1.5; }
 .rzNote { margin-top: 10px; color: var(--fg-dim); font-size: 13.5px; line-height: 1.6; }
 .rzBtns { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+#padBox { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.padTitle { font-weight: 600; margin-bottom: 8px; }
+.padRow { display: flex; align-items: center; gap: 10px; min-height: 40px; flex-wrap: wrap; }
+.padRow label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.padRow input[type="number"] {
+  width: 72px;
+  height: 32px;
+  padding: 0 6px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  user-select: text;
+}
+.padRow input[type="number"]:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 
 /* ---------------------------------------------------------- お知らせ */
 

@@ -5,6 +5,13 @@ const fieldFull = document.getElementById('keyFull')
 const fieldRepeat = document.getElementById('keyRepeat')
 const fieldScroll = document.getElementById('keyScroll')
 const fieldRecord = document.getElementById('keyRecord')
+const fieldDelay = document.getElementById('keyDelay')
+const delaySecondsEl = document.getElementById('delaySeconds')
+const afterCaptureEl = document.getElementById('afterCapture')
+const captureClipboardEl = document.getElementById('captureClipboard')
+const exportFinishEl = document.getElementById('exportFinish')
+const libOrderEl = document.getElementById('libOrder')
+const autoStartEl = document.getElementById('autoStart')
 const saveDirEl = document.getElementById('saveDir')
 const sendToEl = document.getElementById('sendToMenu')
 const snapEl = document.getElementById('snapWindows')
@@ -24,7 +31,9 @@ const warnEl = document.getElementById('warn')
 const statusEl = document.getElementById('status')
 
 const current = {
-  hotkeyRegion: '', hotkeyFull: '', hotkeyScroll: '', hotkeyRecord: '', hotkeyRepeat: '', saveDir: '',
+  hotkeyRegion: '', hotkeyFull: '', hotkeyScroll: '', hotkeyRecord: '', hotkeyRepeat: '', hotkeyDelay: '', saveDir: '',
+  delaySeconds: 5, afterCapture: 'editor', captureClipboard: 'image', exportFinish: 'none', libraryOrder: 'old',
+  autoStart: false,
   sendToMenu: false,
   libraryLimit: 300, snapWindows: true, libraryThumbHeight: 104,
   recordFps: 15, gifFps: 10, gifMaxWidth: 0, recordAudio: true,
@@ -38,7 +47,10 @@ const FIELDS = {
   full: { el: fieldFull, prop: 'hotkeyFull' },
   scroll: { el: fieldScroll, prop: 'hotkeyScroll' },
   record: { el: fieldRecord, prop: 'hotkeyRecord' },
+  delay: { el: fieldDelay, prop: 'hotkeyDelay' },
 }
+// 自動起動は、開いたときの状態から切り替えたときだけ本体に頼む（保存のたびにショートカットを作り直さない）
+let autoStartLoaded = false
 let listening = null   // FIELDS のキー、または null
 
 // ---------------------------------------------------------------- キーの名前
@@ -104,6 +116,12 @@ function render() {
   recAudioEl.checked = !!current.recordAudio
   autoBlurEl.checked = !!current.autoBlur
   autoBlurLevelEl.value = current.autoBlurLevel
+  delaySecondsEl.value = current.delaySeconds
+  afterCaptureEl.value = current.afterCapture
+  captureClipboardEl.value = current.captureClipboard
+  exportFinishEl.value = current.exportFinish
+  libOrderEl.value = current.libraryOrder
+  autoStartEl.checked = !!current.autoStart
   showBadPatterns()
   // 打っている途中の空行や前後の空白を消さないよう、中身が同じなら書き戻さない
   if (wordsOf(autoBlurWordsEl.value).join('\n') !== current.autoBlurWords.join('\n')) {
@@ -143,7 +161,7 @@ function stopListen() {
   render()
 }
 
-const CLEAR_BUTTONS = { region: 'clearRegion', repeat: 'clearRepeat', full: 'clearFull', scroll: 'clearScroll', record: 'clearRecord' }
+const CLEAR_BUTTONS = { region: 'clearRegion', repeat: 'clearRepeat', full: 'clearFull', scroll: 'clearScroll', record: 'clearRecord', delay: 'clearDelay' }
 for (const name of Object.keys(FIELDS)) {
   FIELDS[name].el.addEventListener('click', () => startListen(name))
   document.getElementById(CLEAR_BUTTONS[name]).addEventListener('click', () => {
@@ -200,8 +218,23 @@ document.getElementById('btnSave').addEventListener('click', async () => {
   current.autoBlurWords = wordsOf(autoBlurWordsEl.value)
   current.autoBlurLabels = wordsOf(autoBlurLabelsEl.value)
   current.autoBlurLevel = autoBlurLevelEl.value
-  const r = await window.api.invoke('settings:save', current)
-  if (r && r.failed && r.failed.length) {
+  current.delaySeconds = Math.max(1, Math.min(60, Math.round(Number(delaySecondsEl.value) || 5)))
+  current.afterCapture = afterCaptureEl.value
+  current.captureClipboard = captureClipboardEl.value
+  current.exportFinish = exportFinishEl.value
+  current.libraryOrder = libOrderEl.value
+  current.autoStart = autoStartEl.checked
+  const r = await window.api.invoke('settings:save', Object.assign({}, current, { autoStartChanged: current.autoStart !== autoStartLoaded }))
+  if (r && typeof r.autoStartNow === 'boolean') {
+    autoStartLoaded = r.autoStartNow
+    current.autoStart = r.autoStartNow
+    autoStartEl.checked = r.autoStartNow
+  }
+  if (r && r.autoStart && !r.autoStart.ok) {
+    warnEl.hidden = false
+    warnEl.textContent = '自動起動の設定を変えられませんでした： ' + (r.autoStart.error || '')
+    statusEl.textContent = ''
+  } else if (r && r.failed && r.failed.length) {
     warnEl.hidden = false
     warnEl.textContent = 'このキーは他のアプリが使っているため登録できませんでした： '
       + r.failed.map((f) => f.accel).join(' / ')
@@ -232,6 +265,12 @@ const LIVE = [
   [recAudioEl, 'recordAudio', (el) => el.checked],
   [autoBlurEl, 'autoBlur', (el) => el.checked],
   [autoBlurLevelEl, 'autoBlurLevel', (el) => el.value],
+  [delaySecondsEl, 'delaySeconds', (el) => Math.max(1, Math.min(60, Math.round(Number(el.value) || 5)))],
+  [afterCaptureEl, 'afterCapture', (el) => el.value],
+  [captureClipboardEl, 'captureClipboard', (el) => el.value],
+  [exportFinishEl, 'exportFinish', (el) => el.value],
+  [libOrderEl, 'libraryOrder', (el) => el.value],
+  [autoStartEl, 'autoStart', (el) => el.checked],
 ]
 for (const item of LIVE) {
   item[0].addEventListener('change', () => { current[item[1]] = item[2](item[0]) })
@@ -257,6 +296,14 @@ window.api.invoke('settings:get').then((s) => {
   current.hotkeyScroll = s.hotkeyScroll || ''
   current.hotkeyRecord = s.hotkeyRecord || ''
   current.hotkeyRepeat = s.hotkeyRepeat || ''
+  current.hotkeyDelay = s.hotkeyDelay || ''
+  current.delaySeconds = Number(s.delaySeconds) || 5
+  current.afterCapture = s.afterCapture === 'library' ? 'library' : 'editor'
+  current.captureClipboard = ['off', 'image', 'imagePath', 'path'].includes(s.captureClipboard) ? s.captureClipboard : 'image'
+  current.exportFinish = ['none', 'border', 'round', 'shadow', 'backdrop'].includes(s.exportFinish) ? s.exportFinish : 'none'
+  current.libraryOrder = ['old', 'new', 'name'].includes(s.libraryOrder) ? s.libraryOrder : 'old'
+  current.autoStart = !!s.autoStart
+  autoStartLoaded = current.autoStart
   current.saveDir = s.saveDir || ''
   current.sendToMenu = !!s.sendToMenu
   current.snapWindows = s.snapWindows !== false
