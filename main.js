@@ -67,6 +67,19 @@ function defaultSettings() {
 function validScale(s) { return Number.isFinite(s) && s >= 0.02 && s <= 8 }
 function entryScale(meta) { return meta && validScale(meta.scale) ? meta.scale : 1 }
 
+// 省略で抜いた横の帯（撮ったときの絵の座標 [{ y1, y2 }]）。meta.cuts があるとき、meta.shapes と meta.crop は抜いたあとの絵の座標
+function validCuts(list) {
+  if (!Array.isArray(list)) return []
+  return list.filter((c) => c && Number.isFinite(c.y1) && Number.isFinite(c.y2) && c.y2 > c.y1)
+    .map((c) => ({ y1: c.y1, y2: c.y2 }))
+}
+function entryCuts(meta) { return meta ? validCuts(meta.cuts) : [] }
+
+// 抜いた帯の高さの合計（撮ったときの絵の px）。窓の大きさの見積もりに使うだけなので、重なりは気にしない
+function cutsHeight(cuts, h) {
+  return cuts.reduce((n, c) => n + Math.max(0, Math.min(h, c.y2) - Math.max(0, c.y1)), 0)
+}
+
 // 書き方のお気に入りの初期値。大きな青・赤の白フチ文字と、赤い枠・矢印をよく使うので、それを最初から入れておく。
 // 1つ = { tool, color, lineWidth, fontSize, deco, halo }。使わない項目も持たせておく（登録し直しで道具が変わるため）
 function defaultStylePresets() {
@@ -1618,6 +1631,7 @@ function editorInitData(image, meta) {
     shapes: meta ? (meta.shapes || []) : [],
     crop: meta ? (meta.crop || null) : null,
     scale: entryScale(meta),
+    cuts: entryCuts(meta),
     resizeLast: settings.resizeLast || null,
     savedPath: meta ? (meta.file || null) : null,
     editedPath: meta ? (meta.editedPath || null) : null,
@@ -1639,8 +1653,12 @@ function openEditor(image, meta, opts) {
   const focus = !!o.focus
   // 大きさを変えてある絵は、その大きさで窓を見積もる
   const sk = o.carry && validScale(o.carry.scale) ? o.carry.scale : entryScale(meta)
+  const cuts = o.carry && Array.isArray(o.carry.cuts) ? validCuts(o.carry.cuts) : entryCuts(meta)
   const size0 = image.getSize()
-  const size = { width: Math.round(size0.width * sk), height: Math.round(size0.height * sk) }
+  const size = {
+    width: Math.round(size0.width * sk),
+    height: Math.round(Math.max(1, size0.height - cutsHeight(cuts, size0.height)) * sk),
+  }
   // 切り抜き・はみ出しを入れた「いま見えている絵」。集中モードの窓はこの比にする
   const viewW = o.viewW > 0 ? o.viewW : size.width
   const viewH = o.viewH > 0 ? o.viewH : size.height
@@ -1651,11 +1669,11 @@ function openEditor(image, meta, opts) {
   const wa = disp.workArea
   // 編集画面の 100% は「絵の1px = CSS 1px」なので、窓も絵の実ピクセルをそのまま CSS px として見積もる。
   // 拡大率で割ると、150% の画面では窓が小さすぎて、小さな絵まで縮めて出てしまう。
-  // 幅は 1100 以上あるとツールバーが2段で収まる（実測 97px。1000 以下は3段 135px）。
+  // 幅は 1160 以上あるとツールバーが2段で収まる（実測 97px。境目は約 1130、それ未満は3段 135px）。
   // 既定は下の帯が1行に収まる最小幅（EDITOR_MIN_W）に合わせる
   const ew = Math.round(Math.min(Math.max(size.width + 40, EDITOR_MIN_W), wa.width * 0.94))
   // ツールバー＋下の帯 44px＋自作のタイトルバー（EDITOR_TITLE_H）
-  const CHROME = ew >= 1100 ? 183 : 221
+  const CHROME = ew >= 1160 ? 183 : 221
   const box = focus ? focusSize(viewW / sf, viewH / sf, wa) : {
     w: ew,
     h: Math.round(Math.min(Math.max(size.height + CHROME + 40, 580), wa.height * 0.94)),
@@ -1958,7 +1976,7 @@ ipcMain.on('app:setDefaults', (e, data) => {
 })
 
 // お気に入りに登録できる道具。選択・つかむ・切り抜きは「書き方」を持たないので入れない（editor.js の PRESET_TOOLS と同じ）
-const PRESET_TOOLS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'marker', 'text', 'step', 'blur', 'spot', 'zoom']
+const PRESET_TOOLS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'marker', 'text', 'bubble', 'step', 'blur', 'spot', 'zoom']
 
 // お気に入り1つを検査する。知らない道具・色・範囲外の数は設定ファイルに書かない（手で壊されたときも既定に戻す）
 function cleanPreset(p) {
@@ -2011,6 +2029,9 @@ ipcMain.on('library:updateShapes', (e, data) => {
   const sc = Number(data.scale)
   if (validScale(sc) && sc !== 1) meta.scale = sc
   else delete meta.scale
+  const cuts = validCuts(data.cuts)
+  if (cuts.length) meta.cuts = cuts
+  else delete meta.cuts
   writeMeta(meta)
   if (data.thumbDataUrl) {
     try {
@@ -2038,6 +2059,7 @@ function hasEdits(meta, size) {
   if ((meta.shapes || []).length) return true
   // 大きさを変えた絵は、見えない編集画面で作り直す（ここで縮めると編集画面と違う縮め方になるため）
   if (entryScale(meta) !== 1) return true
+  if (entryCuts(meta).length) return true
   const c = meta.crop
   return !!(c && (c.x !== 0 || c.y !== 0 || c.w !== size.width || c.h !== size.height))
 }
@@ -2291,7 +2313,10 @@ async function diffEntries(ids) {
       libraryToast('比べられませんでした')
       return
     }
-    const boxes = found.boxes.map((b) => clipToCrop(b, newer.crop, size, DIFF_WIDTH)).filter(Boolean)
+    // 大きさを変えた・省略した絵の切り抜き範囲は撮ったときの座標ではないので、ここでは絵の大きさだけで詰める
+    // （編集画面の addShapesFromMain が今の座標に直してから、切り抜き範囲で詰め直す）
+    const sameCoords = entryScale(newer) === 1 && !entryCuts(newer).length
+    const boxes = found.boxes.map((b) => clipToCrop(b, sameCoords ? newer.crop : null, size, DIFF_WIDTH)).filter(Boolean)
     if (!boxes.length) { libraryToast('違いは見つかりませんでした'); return }
     const shapes = boxes.map((b) => ({
       type: 'rect', color: DIFF_COLOR, width: DIFF_WIDTH, fontSize: settings.fontSize,

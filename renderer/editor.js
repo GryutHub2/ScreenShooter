@@ -62,11 +62,13 @@ const state = {
   dataUrl: '',    // 元の絵。集中モードの出入りで窓を作り直すとき本体へ返す
   orig: null,     // 撮ったときの絵（大きさを変えるときは毎回ここから作り直す）
   scale: 1,       // 撮ったときの絵に対する今の大きさ。img・図形・切り抜きはすべてこの大きさの座標
+  cuts: [],       // 省略で抜いた横の帯（撮ったときの絵の座標 [{ y1, y2 }]）。img はこれを抜いてつないだ絵
 }
 
 let nextId = 1
 let pending = null       // 描いている最中の図形
 let pendingCrop = null   // 切り抜き中の枠
+let pendingCut = null    // 省略する帯を選んでいる最中（{ y1, y2 }）
 let drag = null
 let editingShape = null  // 文字を入力中の図形
 let editingIsNew = false
@@ -76,6 +78,9 @@ let presets = []         // 書き方のお気に入り4つ（editor:init で本
 // ---------------------------------------------------------------- 基本の道具
 
 function byId(id) { return state.shapes.find((s) => s.id === id) || null }
+
+// 図形がどの道具で描かれたものか。吹き出しは中身が文字（type: 'text'）なので、道具の名前に読み替える
+function kindOf(s) { return s.type === 'text' && s.bubble ? 'bubble' : s.type }
 
 function norm(s) {
   const x = Math.min(s.x1, s.x2)
@@ -90,9 +95,9 @@ function luminance(hex) {
   return 0.2126 * ((n >> 16 & 255) / 255) + 0.7152 * ((n >> 8 & 255) / 255) + 0.0722 * ((n & 255) / 255)
 }
 
-// 大きさも元に戻せるよう一緒に積む（図形の座標は大きさとセットでないと意味を持たないため）
+// 大きさ・省略も元に戻せるよう一緒に積む（図形の座標は絵の大きさ・抜いた帯とセットでないと意味を持たないため）
 function snapshot() {
-  return JSON.stringify({ shapes: state.shapes, crop: state.crop, scale: state.scale })
+  return JSON.stringify({ shapes: state.shapes, crop: state.crop, scale: state.scale, cuts: state.cuts })
 }
 
 function beginChange() { return snapshot() }
@@ -110,7 +115,8 @@ function commitChange(before) {
 
 function restore(snap) {
   const o = JSON.parse(snap)
-  if ((o.scale || 1) !== state.scale) useScale(o.scale || 1)
+  const cuts = o.cuts || []
+  if ((o.scale || 1) !== state.scale || JSON.stringify(cuts) !== JSON.stringify(state.cuts)) useImage(o.scale || 1, cuts)
   state.shapes = o.shapes
   state.crop = o.crop
   state.selectedId = null
@@ -144,7 +150,9 @@ function redo() {
 const blurTmp = document.createElement('canvas')
 
 function drawShape(g, s, list) {
-  if (s.type === 'text' && editingShape && editingShape.id === s.id) return
+  // 入力中の文字は入力欄が代わりに見せる。吹き出しだけは、枠を打っている文字に合わせて描き続ける
+  const editing = s.type === 'text' && editingShape && editingShape.id === s.id
+  if (editing && !s.bubble) return
   g.save()
   g.lineCap = 'round'
   g.lineJoin = 'round'
@@ -173,7 +181,9 @@ function drawShape(g, s, list) {
   } else if (s.type === 'blur') {
     drawBlur(g, s)
   } else if (s.type === 'text') {
-    drawText(g, s)
+    if (!s.bubble) drawText(g, s)
+    else if (editing) drawBubble(g, Object.assign({}, s, { text: textEdit.value }), false)
+    else drawBubble(g, s, true)
   } else if (s.type === 'zoom') {
     drawZoom(g, s, list || state.shapes)
   }
@@ -663,6 +673,92 @@ function textBounds(s) {
   return { x: s.x1, y: s.y1, w: Math.max(w, s.fontSize * 0.6), h: lh * Math.max(1, lines.length) }
 }
 
+// ---------------------------------------------------------------- 吹き出し
+//
+// 吹き出しは文字（type: 'text'）に bubble: true と、しっぽの先（tx, ty）を足したもの。
+// x1..y2 は中の文字の範囲のまま（入力欄の位置・折り返しを文字と共通にするため）で、枠はその外へ余白ぶん広げて描く
+
+// 白など明るい色を選んだときは、白い地に白い枠で消えるので、暗い地に白い字にする
+function bubbleColors(s) {
+  return luminance(s.color) > 0.85
+    ? { line: s.color, fill: '#2a2a2a', ink: '#ffffff' }
+    : { line: s.color, fill: '#ffffff', ink: '#1b1b1b' }
+}
+
+// 枠・しっぽの形。しっぽは三角で、付け根は「枠の内側で、先にいちばん近い所」に置く。
+// 付け根が角の丸みにかからないよう内へ寄せておくと、どの向きに出しても枠の辺からまっすぐ生える
+function bubbleGeom(s) {
+  const t = textBounds(s)
+  const px = Math.max(6, s.fontSize * 0.55)
+  const py = Math.max(4, s.fontSize * 0.4)
+  const body = { x: t.x - px, y: t.y - py, w: t.w + px * 2, h: t.h + py * 2 }
+  const radius = Math.min(s.fontSize * 0.7, body.w / 2, body.h / 2)
+  const bw = Math.max(2, s.fontSize * 0.08)
+  const geo = { body, radius, bw, pad: { x: px, y: py }, tail: null }
+  if (typeof s.tx !== 'number' || typeof s.ty !== 'number') return geo
+  const tip = { x: s.tx, y: s.ty }
+  // 先が枠の中にあるときは、しっぽを出さない
+  if (tip.x > body.x && tip.x < body.x + body.w && tip.y > body.y && tip.y < body.y + body.h) return geo
+  const hw = Math.min(s.fontSize * 0.5, body.w / 4, body.h / 3)
+  const ix = Math.min(body.w / 2, hw + radius * 0.5 + bw)
+  const iy = Math.min(body.h / 2, hw + radius * 0.5 + bw)
+  const bc = {
+    x: Math.max(body.x + ix, Math.min(body.x + body.w - ix, tip.x)),
+    y: Math.max(body.y + iy, Math.min(body.y + body.h - iy, tip.y)),
+  }
+  const len = Math.hypot(tip.x - bc.x, tip.y - bc.y)
+  if (len < 1) return geo
+  const nx = -(tip.y - bc.y) / len
+  const ny = (tip.x - bc.x) / len
+  geo.tail = { tip, bc, hw, b1: { x: bc.x + nx * hw, y: bc.y + ny * hw }, b2: { x: bc.x - nx * hw, y: bc.y - ny * hw } }
+  return geo
+}
+
+// 枠としっぽは別々の形のまま重ねる。先に両方を倍の太さでなぞってから両方を塗ると、
+// 内側半分の線が塗りで隠れて、外側だけが1本につながった縁取りとして残る（付け根に線が入らない）
+function drawBubble(g, s, withText) {
+  const geo = bubbleGeom(s)
+  const col = bubbleColors(s)
+  const b = geo.body
+  const body = () => { g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, geo.radius) }
+  const tail = () => {
+    const t = geo.tail
+    g.beginPath(); g.moveTo(t.b1.x, t.b1.y); g.lineTo(t.tip.x, t.tip.y); g.lineTo(t.b2.x, t.b2.y); g.closePath()
+  }
+  g.lineJoin = 'round'
+  g.lineWidth = geo.bw * 2
+  g.strokeStyle = col.line
+  body(); g.stroke()
+  if (geo.tail) { tail(); g.stroke() }
+  g.fillStyle = col.fill
+  body(); g.fill()
+  if (geo.tail) { tail(); g.fill() }
+  if (withText) drawText(g, Object.assign({}, s, { color: col.ink, deco: 'none' }))
+}
+
+function bubbleBounds(s) {
+  const geo = bubbleGeom(s)
+  const t = geo.tail
+  return t ? unionRect(geo.body, { x: t.tip.x, y: t.tip.y, w: 0, h: 0 }) : geo.body
+}
+
+function hitBubble(s, p) {
+  const geo = bubbleGeom(s)
+  const b = geo.body
+  if (p.x >= b.x - 3 && p.x <= b.x + b.w + 3 && p.y >= b.y - 3 && p.y <= b.y + b.h + 3) return true
+  const t = geo.tail
+  return !!t && distToSegment(p, t.bc.x, t.bc.y, t.tip.x, t.tip.y) <= Math.max(6 / state.zoom, t.hw * 0.6)
+}
+
+// 置いたばかりの吹き出しのしっぽ。枠の左寄りから下へ出す。下に場所が無ければ上へ
+function defaultTail(s) {
+  const b = bubbleGeom(Object.assign({}, s, { tx: undefined, ty: undefined })).body
+  const c = state.crop
+  const gap = s.fontSize * 1.4
+  s.tx = r1(b.x + Math.min(b.w * 0.3, s.fontSize * 2.5))
+  s.ty = r1(b.y + b.h + gap <= c.y + c.h || b.y - gap < c.y ? b.y + b.h + gap : b.y - gap)
+}
+
 function unionRect(a, b) {
   const x = Math.min(a.x, b.x)
   const y = Math.min(a.y, b.y)
@@ -670,7 +766,7 @@ function unionRect(a, b) {
 }
 
 function shapeBounds(s) {
-  if (s.type === 'text') return textBounds(s)
+  if (s.type === 'text') return s.bubble ? bubbleBounds(s) : textBounds(s)
   const r = norm(s)
   const pad = (s.type === 'line' || s.type === 'arrow') ? s.width : s.width / 2
   const b = { x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 }
@@ -700,7 +796,12 @@ function paintBounds(s) {
     return unionRect(b, { x: s.cx - rr, y: s.cy - rr, w: rr * 2, h: rr * 2 })
   }
   if (s.type !== 'text') return b
-  const halo = Math.max(2, s.fontSize * (s.halo || HALO_DEFAULT)) / 2
+  // 吹き出しの縁は枠の外へ線の太さぶん出る（しっぽの先は丸めた角のぶんも少し）
+  if (s.bubble) {
+    const m = bubbleGeom(s).bw + 1
+    return { x: b.x - m, y: b.y - m, w: b.w + m * 2, h: b.h + m * 2 }
+  }
+  const halo =Math.max(2, s.fontSize * (s.halo || HALO_DEFAULT)) / 2
   const deco = s.deco || 'auto'
   const shadow = (deco === 'shadow' || deco === 'white-shadow') ? s.fontSize * 0.26 : 0
   const m = Math.max(halo, shadow)
@@ -738,7 +839,25 @@ function isWidened() {
   return v.w > c.w || v.h > c.h
 }
 
+function boxHandles(r) {
+  return [
+    { id: 'nw', x: r.x, y: r.y },
+    { id: 'n', x: r.x + r.w / 2, y: r.y },
+    { id: 'ne', x: r.x + r.w, y: r.y },
+    { id: 'e', x: r.x + r.w, y: r.y + r.h / 2 },
+    { id: 'se', x: r.x + r.w, y: r.y + r.h },
+    { id: 's', x: r.x + r.w / 2, y: r.y + r.h },
+    { id: 'sw', x: r.x, y: r.y + r.h },
+    { id: 'w', x: r.x, y: r.y + r.h / 2 },
+  ]
+}
+
 function handlesFor(s) {
+  // 吹き出しは、しっぽの先と（枠のあるものは）枠の角。角は文字の範囲ではなく、見えている枠の角に出す
+  if (s.type === 'text' && s.bubble) {
+    const tail = typeof s.tx === 'number' ? [{ id: 'tail', x: s.tx, y: s.ty }] : []
+    return s.box ? tail.concat(boxHandles(bubbleGeom(s).body)) : tail
+  }
   // 枠のある文字は、枠の大きさ（＝折り返す幅）を四角と同じハンドルで変えられる
   if (s.type === 'text' && !s.box) return []
   if (s.type === 'line' || s.type === 'arrow') {
@@ -762,16 +881,7 @@ function handlesFor(s) {
   const lens = s.type === 'zoom'
     ? [{ id: 'r', x: s.cx + s.r * Math.SQRT1_2, y: s.cy + s.r * Math.SQRT1_2 }]
     : []
-  return lens.concat([
-    { id: 'nw', x: r.x, y: r.y },
-    { id: 'n', x: r.x + r.w / 2, y: r.y },
-    { id: 'ne', x: r.x + r.w, y: r.y },
-    { id: 'e', x: r.x + r.w, y: r.y + r.h / 2 },
-    { id: 'se', x: r.x + r.w, y: r.y + r.h },
-    { id: 's', x: r.x + r.w / 2, y: r.y + r.h },
-    { id: 'sw', x: r.x, y: r.y + r.h },
-    { id: 'w', x: r.x, y: r.y + r.h / 2 },
-  ])
+  return lens.concat(boxHandles(r))
 }
 
 function drawHandles(g, s) {
@@ -781,7 +891,8 @@ function drawHandles(g, s) {
   // 拡大鏡は元の枠とのぞき窓を別々に囲む（両方を囲む大きな四角だと、どこが掴めるのか分からないため）
   const outline = () => {
     if (s.type !== 'zoom') {
-      const b = shapeBounds(s)
+      // 吹き出しは枠だけを囲む（しっぽの先には四角が出るので、先まで囲むとどこが掴めるのか分かりにくい）
+      const b = s.type === 'text' && s.bubble ? bubbleGeom(s).body : shapeBounds(s)
       g.strokeRect(b.x - 2 / z, b.y - 2 / z, b.w + 4 / z, b.h + 4 / z)
       return
     }
@@ -821,6 +932,25 @@ function drawTextBoxGuide(g, s) {
   g.setLineDash([3 / z, 3 / z])
   g.strokeStyle = 'rgba(255,255,255,.9)'
   g.strokeRect(r.x, r.y, r.w, r.h)
+  g.restore()
+}
+
+// 省略する帯。絵の横幅いっぱいを赤く塗り、上下の境目に点線を引く（ここが抜けて、上下がつながる）
+function drawCutOverlay(g, c) {
+  const y1 = Math.min(c.y1, c.y2)
+  const y2 = Math.max(c.y1, c.y2)
+  const v = view()
+  const z = state.zoom
+  g.save()
+  g.fillStyle = 'rgba(232,69,60,.28)'
+  g.fillRect(v.x, y1, v.w, y2 - y1)
+  g.lineWidth = 1.5 / z
+  g.setLineDash([6 / z, 4 / z])
+  g.strokeStyle = '#e8453c'
+  g.beginPath()
+  g.moveTo(v.x, y1); g.lineTo(v.x + v.w, y1)
+  g.moveTo(v.x, y2); g.lineTo(v.x + v.w, y2)
+  g.stroke()
   g.restore()
 }
 
@@ -893,12 +1023,15 @@ function draw() {
   ctx.imageSmoothingQuality = 'high'
 
   // 描いている最中の図形も同じ重なり順に入れる（離した瞬間に上下が入れ替わらないように）
-  paintScene(ctx, pending && pending.type !== 'text' ? pending : null)
+  // 置いたばかりで入力中の吹き出しは、まだ shapes に入っていないので枠だけここで足す
+  paintScene(ctx, pending && pending.type !== 'text' ? pending
+    : editingShape && editingIsNew && editingShape.bubble ? editingShape : null)
   if (pending && pending.type === 'text') drawTextBoxGuide(ctx, pending)
   if (state.tool === 'spot') drawSpotGuides(ctx)
   const sel = byId(state.selectedId)
-  if (sel && !pending && !pendingCrop) drawHandles(ctx, sel)
+  if (sel && !pending && !pendingCrop && !pendingCut) drawHandles(ctx, sel)
   if (pendingCrop) drawCropOverlay(ctx, pendingCrop)
+  if (pendingCut) drawCutOverlay(ctx, pendingCut)
   drawSnapGuides(ctx)
   syncHand(false)
 }
@@ -1127,6 +1260,7 @@ function flushLibrary() {
       shapes: state.shapes,
       crop: state.crop,
       scale: state.scale,
+      cuts: state.cuts,
       thumbDataUrl: exportThumb(),
     })
   } catch (err) {
@@ -1137,7 +1271,7 @@ function flushLibrary() {
 // 今見えている絵が、撮った時のままかどうか。
 // 違うときだけ「_書き込み.png」を別に出す（同じ絵を2個作らないため）
 function isEdited() {
-  return state.shapes.length > 0 || isCropped() || state.scale !== 1
+  return state.shapes.length > 0 || isCropped() || state.scale !== 1 || state.cuts.length > 0
 }
 
 // 書き出す絵が元の絵と違うか。仕上げだけでも違う絵になるので、原本を動かさず「_書き込み.png」を別に出す
@@ -1192,23 +1326,231 @@ function scaledImage(s) {
   return c
 }
 
-// 絵だけを差し替える（図形は動かさない）。元に戻す・開き直しでは図形がすでにその大きさの座標なのでこちら
-function useScale(s) {
-  state.img = scaledImage(s)
+// 絵だけを差し替える（図形は動かさない）。元に戻す・開き直しでは図形がすでにその大きさ・その省略の座標なのでこちら
+function useImage(s, cuts) {
+  const base = scaledImage(s)
   state.scale = s
+  state.cuts = cuts || []
   const z = scaledSize(s)
+  state.img = state.cuts.length ? cutImage(base, state.cuts, s, z) : base
   state.imgW = z.w
-  state.imgH = z.h
+  state.imgH = state.cuts.length ? state.img.height : z.h
 }
 
 // 掛け直すたびに 600.0000000000001 のような端数がたまるので、見た目に出ない桁で丸める
 function r6(v) { return Math.round(v * 1e6) / 1e6 }
 
-function scaleShape(s, k) {
-  for (const key of ['x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'width', 'fontSize']) {
+// 図形の縦の位置を持つ項目。省略で詰めるとき・大きさを変えるときに、横の位置とは別の換算を通す
+const Y_KEYS = ['y1', 'y2', 'cy', 'ty']
+
+// mapY は縦の位置の換算（省略があると、縦は帯の抜け具合で倍率どおりにならないため）。無ければ横と同じ k 倍
+function scaleShape(s, k, mapY) {
+  for (const key of ['x1', 'x2', 'cx', 'r', 'tx', 'width', 'fontSize']) {
     if (typeof s[key] === 'number') s[key] = r6(s[key] * k)
   }
-  if (s.points) for (const p of s.points) { p.x = r6(p.x * k); p.y = r6(p.y * k) }
+  const fy = mapY || ((v) => v * k)
+  for (const key of Y_KEYS) if (typeof s[key] === 'number') s[key] = r6(fy(s[key]))
+  if (s.points) for (const p of s.points) { p.x = r6(p.x * k); p.y = r6(fy(p.y)) }
+}
+
+// ---------------------------------------------------------------- 省略（横の帯を抜いて、ギザギザでつなぐ）
+//
+// 抜いた帯は撮ったときの絵の座標で state.cuts に持ち（重ならないよう上から順にまとめる）、
+// 今の絵は「撮ったときの絵 → 大きさ → 帯を抜いてつなぎ目を描く」で毎回作り直す。原本のファイルには触れない。
+// 図形・切り抜きは大きさのときと同じく今の絵の座標で持ち、帯を抜いたらその下を詰める
+
+// つなぎ目の寸法（今の絵の px）。大きさに比例させる（大きさを変えたとき、図形と同じ割合で伸び縮みさせるため）
+function seamDims(s) {
+  const amp = Math.max(2, Math.round(5 * s))     // ギザギザの山の高さ
+  const mid = Math.max(2, Math.round(6 * s))     // 上下の切れ端のあいだに空ける白
+  return { amp, gap: amp * 2 + mid, period: Math.max(6, Math.round(14 * s)), line: Math.max(1, s) }
+}
+
+// 帯を抜いたあとの並び。segs は残る部分（大きさを変えた絵の y で sy1..sy2、今の絵では cy から）。
+// 2つ目からは前につなぎ目（gap）が入る。いちばん上・下を抜いたときはつなぎ目を作らない（切り抜きと同じ）
+function cutLayout(cuts, s, H) {
+  const d = seamDims(s)
+  const keep = []
+  let y = 0
+  for (const c of cuts) {
+    const a = Math.max(0, Math.min(H, Math.round(c.y1 * s)))
+    const b = Math.max(0, Math.min(H, Math.round(c.y2 * s)))
+    if (a > y) keep.push([y, a])
+    y = Math.max(y, b)
+  }
+  if (y < H) keep.push([y, H])
+  let cy = 0
+  const segs = keep.map(([sy1, sy2], i) => {
+    if (i) cy += d.gap
+    const g = { sy1, sy2, cy }
+    cy += sy2 - sy1
+    return g
+  })
+  return { s, segs, h: cy, d }
+}
+
+function cutNow() { return cutLayout(state.cuts, state.scale, scaledSize(state.scale).h) }
+
+// 撮ったときの y → 今の y。抜いた帯の中は、つなぎ目の真ん中に寄せる。絵の外（はみ出した図形）はそのまま延ばす
+function origToCur(L, y) {
+  const sy = y * L.s
+  const g = L.segs
+  if (!g.length) return 0
+  if (sy <= g[0].sy1) return g[0].cy + (sy - g[0].sy1)
+  for (let i = 0; i < g.length; i++) {
+    if (sy <= g[i].sy2) return g[i].cy + (sy - g[i].sy1)
+    if (i + 1 < g.length && sy < g[i + 1].sy1) return g[i + 1].cy - L.d.gap / 2
+  }
+  const e = g[g.length - 1]
+  return e.cy + (sy - e.sy1)
+}
+
+// 今の y → 撮ったときの y。つなぎ目の上は、抜いた帯の上端（end のときは下端）に当てる
+function curToOrig(L, y, end) {
+  const g = L.segs
+  if (!g.length) return y / L.s
+  if (y <= g[0].cy) return (g[0].sy1 + y - g[0].cy) / L.s
+  for (let i = 0; i < g.length; i++) {
+    const bottom = g[i].cy + g[i].sy2 - g[i].sy1
+    if (y <= bottom) return (g[i].sy1 + y - g[i].cy) / L.s
+    if (i + 1 < g.length && y < g[i + 1].cy) return (end ? g[i + 1].sy1 : g[i].sy2) / L.s
+  }
+  const e = g[g.length - 1]
+  return (e.sy1 + y - e.cy) / L.s
+}
+
+// 撮ったときの座標の四角（自動ぼかし・違いの赤枠）を今の座標へ。帯の中に丸ごと入るものは高さ 0 になる
+function origRectToCur(b) {
+  const L = cutNow()
+  const y1 = origToCur(L, b.y)
+  const y2 = origToCur(L, b.y + b.h)
+  return { x: b.x * state.scale, y: y1, w: b.w * state.scale, h: y2 - y1 }
+}
+
+// 履歴から来た帯を検査する。壊れた値で絵が作れなくなるより、省略なしで開くほうがよい
+function cleanCuts(list) {
+  if (!Array.isArray(list)) return []
+  return mergeCuts(list.filter((c) => c && Number.isFinite(c.y1) && Number.isFinite(c.y2) && c.y2 > c.y1 && c.y2 > 0))
+}
+
+const cutCache = new Map()
+
+// 帯を抜いてつないだ絵。つなぎ目は白い隙間で、上下の切れ端の縁をギザギザに破いたように描く。
+// 破れた縁の山は、抜いて捨てる側の絵から取る（残した絵の端を山で隠さないため）
+function cutImage(src, cuts, s, z) {
+  const key = s + ':' + JSON.stringify(cuts)
+  if (cutCache.has(key)) return cutCache.get(key)
+  const W = z.w
+  const H = z.h
+  const L = cutLayout(cuts, s, H)
+  const d = L.d
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = Math.max(1, L.h)
+  const g = c.getContext('2d')
+  // 三角の波。dir=1 で下へ、-1 で上へ山が出る
+  const zig = (y0, dir) => {
+    const pts = []
+    for (let x = 0, i = 0; x < W + d.period / 2; x += d.period / 2, i++) pts.push([Math.min(x, W), y0 + (i % 2 ? dir * d.amp : 0)])
+    return pts
+  }
+  L.segs.forEach((sg, i) => {
+    g.drawImage(src, 0, sg.sy1, W, sg.sy2 - sg.sy1, 0, sg.cy, W, sg.sy2 - sg.sy1)
+    if (!i) return
+    const up = L.segs[i - 1]
+    const top = up.cy + up.sy2 - up.sy1     // つなぎ目の上端
+    const bot = sg.cy                       // つなぎ目の下端
+    g.fillStyle = '#ffffff'
+    g.fillRect(0, top, W, bot - top)
+    const a = zig(top, 1)
+    const b = zig(bot, -1)
+    // 縁から山の先までを、捨てる側の絵で埋める
+    const tear = (pts, edge, srcY, dstY) => {
+      g.save()
+      g.beginPath()
+      g.moveTo(0, edge)
+      for (const p of pts) g.lineTo(p[0], p[1])
+      g.lineTo(W, edge)
+      g.closePath()
+      g.clip()
+      const sy = Math.max(0, Math.min(H - d.amp, srcY))
+      g.drawImage(src, 0, sy, W, d.amp, 0, dstY, W, d.amp)
+      g.restore()
+    }
+    tear(a, top, up.sy2, top)
+    tear(b, bot, sg.sy1 - d.amp, bot - d.amp)
+    g.strokeStyle = 'rgba(0,0,0,.35)'
+    g.lineWidth = d.line
+    g.lineJoin = 'miter'
+    for (const pts of [a, b]) {
+      g.beginPath()
+      pts.forEach((p, j) => (j ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])))
+      g.stroke()
+    }
+  })
+  if (cutCache.size >= 3) cutCache.delete(cutCache.keys().next().value)
+  cutCache.set(key, c)
+  return c
+}
+
+// 重なる・接する帯をまとめる
+function mergeCuts(list) {
+  const out = []
+  for (const c of list.slice().sort((p, q) => p.y1 - q.y1)) {
+    const last = out[out.length - 1]
+    if (last && c.y1 <= last.y2 + 1e-6) last.y2 = Math.max(last.y2, c.y2)
+    else out.push({ y1: c.y1, y2: c.y2 })
+  }
+  return out
+}
+
+// 今の絵の a..b（縦）を抜く。1回の変更なので Ctrl+Z で戻せる。
+// 帯の中に丸ごと入っている図形は消し、それ以外は縦の位置を新しい並びへ換算する（帯をまたぐ枠は縮む）
+function applyCut(a, b) {
+  a = Math.max(0, Math.round(a))
+  b = Math.min(state.imgH, Math.round(b))
+  if (b - a < 4) return
+  const L0 = cutNow()
+  const cuts = mergeCuts(state.cuts.concat([{ y1: r6(curToOrig(L0, a, false)), y2: r6(curToOrig(L0, b, true)) }]))
+  const L1 = cutLayout(cuts, state.scale, scaledSize(state.scale).h)
+  if (L1.h < 8) { toast('絵がほとんど無くなるので省略できません'); return }
+  commitText()
+  const before = beginChange()
+  const full = !isCropped()
+  const c = state.crop
+  const fy = (y) => origToCur(L1, curToOrig(L0, y, false))
+  state.shapes = state.shapes.filter((sh) => {
+    const r = (sh.type === 'spot' || sh.type === 'blur') ? norm(sh) : shapeBounds(sh)
+    return !(r.y >= a && r.y + r.h <= b)
+  })
+  for (const sh of state.shapes) {
+    // 番号は丸のまま（中心だけ動かす）。上下を別々に詰めると、帯をまたいだときに潰れるため
+    if (sh.type === 'step') {
+      const cy = (sh.y1 + sh.y2) / 2
+      const n = fy(cy) - cy
+      sh.y1 += n; sh.y2 += n
+      continue
+    }
+    scaleShape(sh, 1, fy)
+    fitTextBox(sh)
+  }
+  if (!byId(state.selectedId)) state.selectedId = null
+  useImage(state.scale, cuts)
+  if (full) {
+    state.crop = { x: 0, y: 0, w: state.imgW, h: state.imgH }
+  } else {
+    const y1 = Math.max(0, Math.round(fy(c.y)))
+    const y2 = Math.min(state.imgH, Math.round(fy(c.y + c.h)))
+    state.crop = { x: c.x, y: y1, w: c.w, h: Math.max(1, y2 - y1) }
+  }
+  // 倍率とスクロール位置はそのまま（全体に合わせ直すと、絵が短くなったぶん拡大されて見ていた所がずれる）
+  state.fit = false
+  const top = wrap.scrollTop
+  commitChange(before)
+  layout()
+  draw()
+  wrap.scrollTop = top
+  // 抜けたことは絵で分かるので、お知らせは出さない（下の真ん中に出るお知らせが、続けて帯を選ぶドラッグを横取りするため）
 }
 
 // 絵・図形・切り抜きをまとめて s 倍（撮ったとき基準）にする。1回の変更なので Ctrl+Z で戻せる
@@ -1219,17 +1561,23 @@ function resizeTo(s) {
   const k = s / state.scale
   const c = state.crop
   const full = !isCropped()
-  useScale(s)
-  for (const sh of state.shapes) { scaleShape(sh, k); fitTextBox(sh) }
+  // 省略があると、つなぎ目の高さの丸めで縦は k 倍ちょうどにならないので、撮ったときの座標を通して換算する
+  const L0 = cutNow()
+  const L1 = cutLayout(state.cuts, s, scaledSize(s).h)
+  const fy = state.cuts.length ? (y) => origToCur(L1, curToOrig(L0, y, false)) : null
+  useImage(s, state.cuts)
+  for (const sh of state.shapes) { scaleShape(sh, k, fy); fitTextBox(sh) }
   if (full) {
     state.crop = { x: 0, y: 0, w: state.imgW, h: state.imgH }
   } else {
     // 切り抜き範囲は整数に丸める（半端だと縁が半透明の 1px になる）。はみ出したら内へ寄せる
+    const cy1 = fy ? fy(c.y) : c.y * k
+    const cy2 = fy ? fy(c.y + c.h) : (c.y + c.h) * k
     const w = Math.max(1, Math.min(state.imgW, Math.round(c.w * k)))
-    const h = Math.max(1, Math.min(state.imgH, Math.round(c.h * k)))
+    const h = Math.max(1, Math.min(state.imgH, Math.round(cy2 - cy1)))
     state.crop = {
       x: Math.max(0, Math.min(state.imgW - w, Math.round(c.x * k))),
-      y: Math.max(0, Math.min(state.imgH - h, Math.round(c.y * k))),
+      y: Math.max(0, Math.min(state.imgH - h, Math.round(cy1))),
       w, h,
     }
   }
@@ -1262,7 +1610,7 @@ function rzView() {
 // 撮ったときの大きさでの出来上がり範囲。切り抜きもはみ出しも無ければ元の絵の大きさそのもの。
 // 今の大きさ（四捨五入ずみ）から逆算すると倍率が 2 から 1.997 のようにずれ、整数倍の拡大にならないため
 function rzBase() {
-  if (!isCropped() && !isWidened()) return { w: state.orig.naturalWidth, h: state.orig.naturalHeight }
+  if (!isCropped() && !isWidened() && !state.cuts.length) return { w: state.orig.naturalWidth, h: state.orig.naturalHeight }
   const v = view()
   return { w: v.w / state.scale, h: v.h / state.scale }
 }
@@ -1476,6 +1824,7 @@ function toggleFocus() {
       shapes: state.shapes,
       crop: state.crop,
       scale: state.scale,
+      cuts: state.cuts,
       // 集中モードははみ出さない（つかめない）ので、つかむ前の道具を渡す
       tool: state.tool === 'hand' ? handBackTool : state.tool,
       color: state.color,
@@ -1548,6 +1897,7 @@ function hitShape(s, p) {
     return false
   }
   if (s.type === 'text') {
+    if (s.bubble) return hitBubble(s, p)
     const b = textBounds(s)
     return p.x >= b.x - 3 && p.x <= b.x + b.w + 3 && p.y >= b.y - 3 && p.y <= b.y + b.h + 3
   }
@@ -1619,6 +1969,7 @@ const HANDLE_CURSOR = {
   n: 'ns-resize', s: 'ns-resize',
   e: 'ew-resize', w: 'ew-resize',
   r: 'nwse-resize',
+  tail: 'crosshair',
 }
 
 function handleCursor(s, h) {
@@ -1638,6 +1989,7 @@ function moveShape(s, dx, dy) {
   s.x1 += dx; s.y1 += dy; s.x2 += dx; s.y2 += dy
   if (s.points) for (const pt of s.points) { pt.x = r1(pt.x + dx); pt.y = r1(pt.y + dy) }
   if (s.type === 'zoom') { s.cx += dx; s.cy += dy }
+  if (typeof s.tx === 'number') { s.tx += dx; s.ty += dy }
 }
 
 // 拡大鏡はドラッグした所だけを動かす。のぞき窓なら窓だけ、元の枠なら枠だけ（＝拡大する場所が変わる）
@@ -1655,6 +2007,15 @@ function applyResize(s, handle, p, orig) {
   if (s.type === 'line' || s.type === 'arrow') {
     if (handle === 'p1') { s.x1 = p.x; s.y1 = p.y } else { s.x2 = p.x; s.y2 = p.y }
     return
+  }
+  if (handle === 'tail') { s.tx = r1(p.x); s.ty = r1(p.y); return }
+  // 吹き出しの角は見えている枠の角。中の文字の範囲はそこから余白ぶん内側なので、押した所を戻してから当てる
+  if (s.type === 'text' && s.bubble) {
+    const pad = bubbleGeom(orig).pad
+    p = {
+      x: p.x + (handle.indexOf('w') >= 0 ? pad.x : handle.indexOf('e') >= 0 ? -pad.x : 0),
+      y: p.y + (handle.indexOf('n') >= 0 ? pad.y : handle.indexOf('s') >= 0 ? -pad.y : 0),
+    }
   }
   let x1 = Math.min(orig.x1, orig.x2)
   let y1 = Math.min(orig.y1, orig.y2)
@@ -1764,13 +2125,16 @@ function openTextEditor(s, isNew) {
   const px = s.fontSize * state.zoom
   textEdit.hidden = false
   textEdit.value = s.text || ''
-  textEdit.style.color = s.color
+  // 吹き出しの字は枠の色ではなく、地に合わせた黒（暗い地なら白）
+  const ink = s.bubble ? bubbleColors(s).ink : s.color
+  textEdit.style.color = ink
   textEdit.style.font = '600 ' + px + 'px "Yu Gothic UI", "Meiryo", system-ui, sans-serif'
   textEdit.style.lineHeight = (px * 1.28) + 'px'
   // 枠のある文字は白い欄の中で折り返す。白い字だと白地に消えるので、明るい色のときだけ地を暗くする
   textEdit.wrap = s.box ? 'soft' : 'off'
   textEdit.classList.toggle('box', !!s.box)
-  textEdit.classList.toggle('dark', !!s.box && luminance(s.color) > 0.62)
+  textEdit.classList.toggle('dark', !!s.box && luminance(ink) > 0.62)
+  textEdit.classList.toggle('bubble', !!s.bubble)
   textEdit.scrollTop = 0
   freezeView()
   positionTextEditor()
@@ -1798,6 +2162,7 @@ function commitText() {
   } else {
     s.text = text
     fitTextBox(s)
+    if (wasNew && s.bubble) defaultTail(s)
     if (wasNew) state.shapes.push(s)
     state.selectedId = s.id
   }
@@ -1815,7 +2180,14 @@ function cancelText() {
   draw()
 }
 
-textEdit.addEventListener('input', autoSizeTextEditor)
+textEdit.addEventListener('input', () => {
+  autoSizeTextEditor()
+  // 吹き出しは打った文字に合わせて枠を描き直す。置いたばかりなら、しっぽも伸びた枠の下へ付け直す
+  if (editingShape && editingShape.bubble) {
+    if (editingIsNew) defaultTail(Object.assign(editingShape, { text: textEdit.value }))
+    draw()
+  }
+})
 textEdit.addEventListener('blur', () => { if (editingShape) commitText() })
 
 // ---------------------------------------------------------------- マウス操作
@@ -1838,8 +2210,8 @@ cv.addEventListener('pointerdown', (e) => {
   freezeView()
 
   // すでに置いたものの上なら、どの道具を持っていても掴む（動かす・大きさを変える）。
-  // 中身を直したいときはダブルクリック。切り抜きは範囲を取る操作なので、ここは素通しする。
-  if (state.tool !== 'crop') {
+  // 中身を直したいときはダブルクリック。切り抜き・省略は範囲を取る操作なので、ここは素通しする。
+  if (state.tool !== 'crop' && state.tool !== 'cut') {
     const sel = byId(state.selectedId)
     const h = sel && grabbable(sel) ? hitHandle(sel, p) : null
     if (h) {
@@ -1867,13 +2239,14 @@ cv.addEventListener('pointerdown', (e) => {
     }
   }
 
-  // 文字はドラッグで入力する枠を取る。離した時点で入力欄を開く（endDrag）
-  if (state.tool === 'text') {
+  // 文字はドラッグで入力する枠を取る。離した時点で入力欄を開く（endDrag）。吹き出しも同じ置き方
+  if (state.tool === 'text' || state.tool === 'bubble') {
     pending = {
       id: nextId++, type: 'text', color: state.color, width: state.lineWidth,
       fontSize: state.fontSize, deco: state.deco, halo: state.halo,
       x1: p.x, y1: p.y, x2: p.x, y2: p.y, text: '',
     }
+    if (state.tool === 'bubble') pending.bubble = true
     state.selectedId = null
     drag = { mode: 'draw', cx: p.x, cy: p.y }
     draw()
@@ -1883,6 +2256,14 @@ cv.addEventListener('pointerdown', (e) => {
   if (state.tool === 'crop') {
     pendingCrop = { x1: p.x, y1: p.y, x2: p.x, y2: p.y }
     drag = { mode: 'crop' }
+    draw()
+    return
+  }
+
+  if (state.tool === 'cut') {
+    pendingCut = { y1: p.y, y2: p.y }
+    state.selectedId = null
+    drag = { mode: 'cut' }
     draw()
     return
   }
@@ -1926,8 +2307,8 @@ cv.addEventListener('pointerdown', (e) => {
 cv.addEventListener('pointermove', (e) => {
   if (state.tool === 'hand') return
   if (!drag) {
-    // 置いたものの上では掴めるので、その合図にカーソルを変える（切り抜きは範囲取りなので出さない）
-    if (state.tool !== 'crop') {
+    // 置いたものの上では掴めるので、その合図にカーソルを変える（切り抜き・省略は範囲取りなので出さない）
+    if (state.tool !== 'crop' && state.tool !== 'cut') {
       const p = toImg(e)
       const sel = byId(state.selectedId)
       const h = sel && grabbable(sel) ? hitHandle(sel, p) : null
@@ -1965,6 +2346,8 @@ cv.addEventListener('pointermove', (e) => {
   } else if (drag.mode === 'crop' && pendingCrop) {
     pendingCrop.x2 = p.x
     pendingCrop.y2 = p.y
+  } else if (drag.mode === 'cut' && pendingCut) {
+    pendingCut.y2 = p.y
   } else if (drag.mode === 'move') {
     const s = byId(drag.id)
     if (s) {
@@ -2095,10 +2478,14 @@ function endDrag() {
     const r = norm(s)
     // クリックだけ（ほとんど動かしていない）なら枠なし。改行した所でだけ折れる、これまでの置き方
     if (r.w * state.zoom > 8 && r.h * state.zoom > 8) {
-      // 画面の外まで引っ張っても、枠は見えている範囲に収める（はみ出すと画角が広がる）
+      // 画面の外まで引っ張っても、枠は見えている範囲に収める（はみ出すと画角が広がる）。
+      // 吹き出しは取った範囲を見えている枠として扱い、中の文字の範囲は余白と縁のぶん内側にする
       const v = view()
-      const x1 = Math.max(r.x, v.x), y1 = Math.max(r.y, v.y)
-      const x2 = Math.min(r.x + r.w, v.x + v.w), y2 = Math.min(r.y + r.h, v.y + v.h)
+      const geo = s.bubble ? bubbleGeom(s) : null
+      const mx = geo ? geo.pad.x + geo.bw + 1 : 0
+      const my = geo ? geo.pad.y + geo.bw + 1 : 0
+      const x1 = Math.max(r.x, v.x) + mx, y1 = Math.max(r.y, v.y) + my
+      const x2 = Math.min(r.x + r.w, v.x + v.w) - mx, y2 = Math.min(r.y + r.h, v.y + v.h) - my
       s.box = true
       s.x1 = x1; s.y1 = y1
       s.x2 = Math.max(x2, x1 + s.fontSize)
@@ -2106,6 +2493,7 @@ function endDrag() {
     } else {
       s.x2 = s.x1; s.y2 = s.y1
     }
+    if (s.bubble) defaultTail(s)
     updateUi()
     openTextEditor(s, true)
     return
@@ -2131,6 +2519,10 @@ function endDrag() {
     }
     pending = null
     commitChange(snap)
+  } else if (mode === 'cut' && pendingCut) {
+    const c = pendingCut
+    pendingCut = null
+    applyCut(Math.min(c.y1, c.y2), Math.max(c.y1, c.y2))
   } else if (mode === 'crop' && pendingCrop) {
     const r = norm({ x1: pendingCrop.x1, y1: pendingCrop.y1, x2: pendingCrop.x2, y2: pendingCrop.y2 })
     pendingCrop = null
@@ -2189,7 +2581,7 @@ function setTool(tool) {
   cv.classList.toggle('select', tool === 'select')
   wrap.classList.toggle('hand', tool === 'hand')
   // 「つかむ」の手のカーソルは CSS 側で出す（直に書くとそちらが勝ってしまう）
-  cv.style.cursor = tool === 'hand' ? '' : tool === 'select' ? 'default' : 'crosshair'
+  cv.style.cursor = tool === 'hand' ? '' : tool === 'select' ? 'default' : tool === 'cut' ? 'row-resize' : 'crosshair'
   updateUi()
   draw()
 }
@@ -2287,7 +2679,7 @@ document.getElementById('btnFinishView').addEventListener('click', () => showFin
 // ---------------------------------------------------------------- 書き方のお気に入り
 
 // 登録できる道具。選択・つかむ・切り抜きは書き方を持たないので入れない（main.js の PRESET_TOOLS と同じ）
-const PRESET_TOOLS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'marker', 'text', 'step', 'blur', 'spot', 'zoom']
+const PRESET_TOOLS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'marker', 'text', 'bubble', 'step', 'blur', 'spot', 'zoom']
 const favBtns = Array.from(document.querySelectorAll('.fav'))
 
 // お気に入りの、その道具で意味のある項目だけを取り出す。
@@ -2297,7 +2689,7 @@ function presetPatch(p) {
   if (p.tool === 'spot') return {}
   if (p.tool === 'blur') return { lineWidth: nearest(WIDTHS, p.lineWidth) }
   const patch = { color: p.color }
-  if (p.tool === 'text' || p.tool === 'step') patch.fontSize = nearest(FONT_SIZES, p.fontSize)
+  if (p.tool === 'text' || p.tool === 'bubble' || p.tool === 'step') patch.fontSize = nearest(FONT_SIZES, p.fontSize)
   else patch.lineWidth = nearest(WIDTHS, p.lineWidth)
   if (p.tool === 'text') {
     patch.deco = DECOS.includes(p.deco) ? p.deco : 'auto'
@@ -2320,6 +2712,7 @@ function describePreset(p) {
     return color + '・文字 ' + q.fontSize + 'px・' + (deco ? deco.textContent : '') + (hasHalo && halo ? '（' + halo.label + '）' : '')
   }
   if (p.tool === 'step') return color + '・番号 ' + q.fontSize + 'px'
+  if (p.tool === 'bubble') return color + '・吹き出し 文字 ' + q.fontSize + 'px'
   if (p.tool === 'spot') return 'スポットライト'
   const wBtn = p.tool === 'marker'
     ? document.querySelector('#markerWidths .wd[data-width="' + q.markerWidth + '"]')
@@ -2372,7 +2765,7 @@ function syncPresetUi() {
 // 図形を選んでいれば applyStyle がその図形にも当てる（入力中の文字は確定させて、選んだ状態にしてから当てる）
 function applyPreset(i) {
   const p = presets[i]
-  if (!p || drag || pending || pendingCrop) return
+  if (!p || drag || pending || pendingCrop || pendingCut) return
   commitText()
   applyStyle(presetPatch(p))
   setTool(p.tool)
@@ -2381,7 +2774,7 @@ function applyPreset(i) {
 // いまの書き方。図形を選んでいればその図形の書き方、無ければ持っている道具と今の設定
 function currentStyle() {
   const sel = byId(state.selectedId)
-  const tool = sel ? sel.type : state.tool
+  const tool = sel ? kindOf(sel) : state.tool
   if (!PRESET_TOOLS.includes(tool)) return null
   const marker = tool === 'marker'
   const p = {
@@ -2448,7 +2841,7 @@ document.getElementById('btnPin').addEventListener('click', () => {
   flushLibrary()
   const v = view()
   // 位置は撮ったときの絵の座標で渡す（本体は撮った場所に重ねるのに使う。大きさを変えた絵でも左上をそこに合わせる）
-  window.api.send('editor:pin', { dataUrl: exportCanvas().toDataURL('image/png'), x: v.x / state.scale, y: v.y / state.scale })
+  window.api.send('editor:pin', { dataUrl: exportCanvas().toDataURL('image/png'), x: v.x / state.scale, y: curToOrig(cutNow(), v.y, false) })
 })
 document.getElementById('btnResize').addEventListener('click', () => openResize())
 document.getElementById('btnUndo').addEventListener('click', undo)
@@ -2501,17 +2894,17 @@ function updateUi() {
   const sel = byId(state.selectedId)
   // 太さ・文字の欄は、選んでいる図形（無ければ持っている道具）に合わせて1種類だけ出す。
   // 2種類同時に出ると reserveOptsWidth() で取った幅を超え、ツールバーの段が増えて絵が下へずれる
-  const kind = sel ? sel.type : state.tool
-  // 文字サイズは、文字と連番マーカー（丸の大きさ）で使う
+  const kind = sel ? kindOf(sel) : state.tool
+  // 文字サイズは、文字・吹き出しと連番マーカー（丸の大きさ）で使う
   const textMode = kind === 'text'
-  document.getElementById('fonts').hidden = !(textMode || kind === 'step')
-  // 飾りは文字だけのもの。連番マーカーのときは出さない
+  document.getElementById('fonts').hidden = !(textMode || kind === 'bubble' || kind === 'step')
+  // 飾りは文字だけのもの。吹き出し（白い地に載る）と連番マーカーのときは出さない
   fontDecoEl.hidden = !textMode
   // フチの太さは、フチが出る飾りを選んでいるときだけ意味がある
   fontHaloEl.hidden = !textMode || state.deco === 'shadow' || state.deco === 'none'
-  // 文字と連番マーカーは線の太さを使わないので出さない。蛍光ペンは専用の太さを出す
-  // スポットライトの暗さは固定なので、太さも出さない
-  document.getElementById('widths').hidden = kind === 'text' || kind === 'step' || kind === 'marker' || kind === 'spot'
+  // 文字・吹き出しと連番マーカーは線の太さを使わないので出さない（吹き出しの縁は文字の大きさで決まる）。
+  // 蛍光ペンは専用の太さを出す。スポットライトの暗さは固定なので、太さも出さない
+  document.getElementById('widths').hidden = kind === 'text' || kind === 'bubble' || kind === 'step' || kind === 'marker' || kind === 'spot'
   document.getElementById('markerWidths').hidden = kind !== 'marker'
 
   // 縦長のときだけ「分割保存」を出す（ふつうの絵では使わないため）
@@ -2543,6 +2936,7 @@ function updateTip() {
   const tip = document.getElementById('stTip')
   if (!state.savedPath) { tip.textContent = '保存先に書き出せませんでした（「保存」でやり直せます）'; return }
   const what = (state.shapes.length || isCropped()) ? '書き込み'
+    : state.cuts.length ? '省略'
     : state.scale !== 1 ? 'サイズ変更' : '仕上げ（' + FINISH_LABELS[state.finish] + '）'
   tip.textContent = needsExport()
     ? what + 'は「保存」で ' + baseNameOf(state.savedPath) + '_書き込み.png として別に出ます（元の絵はそのまま）'
@@ -2684,7 +3078,7 @@ window.addEventListener('keydown', (e) => {
 
   const tools = {
     v: 'select', h: 'hand', r: 'rect', e: 'ellipse', a: 'arrow', l: 'line', p: 'pen', m: 'marker',
-    t: 'text', n: 'step', b: 'blur', s: 'spot', z: 'zoom', c: 'crop',
+    t: 'text', u: 'bubble', n: 'step', b: 'blur', s: 'spot', z: 'zoom', c: 'crop', x: 'cut',
   }
   const t = tools[e.key.toLowerCase()]
   if (t) { e.preventDefault(); setTool(t) }
@@ -2756,10 +3150,12 @@ window.api.on('editor:init', (d) => {
     state.orig = img
     origPixels = null
     scaledCache.clear()
-    // 大きさを変えてある絵は、図形も切り抜きもその大きさの座標なので、先に絵を同じ大きさにしておく。
+    cutCache.clear()
+    // 大きさを変えた・省略した絵は、図形も切り抜きもその絵の座標なので、先に絵を同じ形にしておく。
     // 集中モードの出入りでは、履歴より新しい carry のほうを使う
     const want = carry && typeof carry.scale === 'number' ? carry.scale : Number(d.scale)
-    try { useScale(validScale(want) ? want : 1) } catch (err) { console.error('大きさを変えられませんでした:', err); useScale(1) }
+    const cuts = cleanCuts(carry && Array.isArray(carry.cuts) ? carry.cuts : d.cuts)
+    try { useImage(validScale(want) ? want : 1, cuts) } catch (err) { console.error('絵を作り直せませんでした:', err); useImage(1, []) }
     state.crop = { x: 0, y: 0, w: state.imgW, h: state.imgH }
 
     // 履歴から開き直したときは、前に描いた図形をそのまま復活させる（焼き込んでいないので動かせる）。
@@ -2776,7 +3172,7 @@ window.api.on('editor:init', (d) => {
     if (d.exportOnly) {
       document.fonts.ready.then(() => {
         const v = view()
-        window.api.send('editor:exported', { dataUrl: exportPNG(), x: v.x / state.scale, y: v.y / state.scale })
+        window.api.send('editor:exported', { dataUrl: exportPNG(), x: v.x / state.scale, y: curToOrig(cutNow(), v.y, false) })
       })
       return
     }
@@ -2812,10 +3208,10 @@ function addShapesFromMain(d) {
   const c = state.crop
   const before = beginChange()
   let added = 0
-  // 本体が見つける違いは撮ったときの絵の座標。大きさを変えてあれば今の座標に直す（線の太さはそのまま）
-  const k = state.scale
+  // 本体が見つける違いは撮ったときの絵の座標。大きさを変えた・省略した絵なら今の座標に直す（線の太さはそのまま）
   for (const s0 of d.shapes) {
-    const s = Object.assign({}, s0, { x1: s0.x1 * k, y1: s0.y1 * k, x2: s0.x2 * k, y2: s0.y2 * k })
+    const r = origRectToCur(norm(s0))
+    const s = Object.assign({}, s0, { x1: r.x, y1: r.y, x2: r.x + r.w, y2: r.y + r.h })
     const half = (s.width || 0) / 2
     const x1 = Math.max(Math.min(s.x1, s.x2), c.x + half)
     const y1 = Math.max(Math.min(s.y1, s.y2), c.y + half)
@@ -2852,7 +3248,7 @@ document.getElementById('privNoticeClose').addEventListener('click', () => { pri
 
 // 描いている・文字を打っている最中に図形を足すと、その操作の「元に戻す」やドラッグの途中の状態と混ざるので、終わるまで待つ
 function whenIdle(fn) {
-  if (drag || pending || pendingCrop || editingShape) { setTimeout(() => whenIdle(fn), 250); return }
+  if (drag || pending || pendingCrop || pendingCut || editingShape) { setTimeout(() => whenIdle(fn), 250); return }
   fn()
 }
 
@@ -2883,10 +3279,10 @@ function placePrivateBlurs(boxes, manual) {
   const blurs = state.shapes.filter((sh) => sh.type === 'blur').map(norm)
   const before = beginChange()
   let added = 0
-  // 読み取りは保存先の元の絵で行うので、四角は撮ったときの座標。大きさを変えてあれば今の座標に直す
-  const k = state.scale
+  // 読み取りは保存先の元の絵で行うので、四角は撮ったときの座標。大きさを変えた・省略した絵なら今の座標に直す
+  // （抜いた帯の中の文字は高さ 0 になり、下で飛ばされる）
   for (const b0 of boxes) {
-    const b = { x: b0.x * k, y: b0.y * k, w: b0.w * k, h: b0.h * k }
+    const b = origRectToCur(b0)
     const x1 = Math.max(b.x, c.x), y1 = Math.max(b.y, c.y)
     const x2 = Math.min(b.x + b.w, c.x + c.w), y2 = Math.min(b.y + b.h, c.y + c.h)
     if (x2 - x1 < 4 || y2 - y1 < 4) continue

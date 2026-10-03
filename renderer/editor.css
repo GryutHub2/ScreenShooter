@@ -232,6 +232,8 @@ button:disabled:hover { background: transparent; }
 }
 #textEdit.box.dark { background: #2a2a2a; outline-color: rgba(255, 255, 255, .6); }
 #textEdit.box::-webkit-scrollbar { display: none; }
+/* 吹き出しは canvas 側に白い（暗い）地を描くので、カーソルは字と同じ色にする（白だと白い地で見えない） */
+#textEdit.bubble { caret-color: auto; }
 
 /* ---------------------------------------------------------- 下の帯 */
 
