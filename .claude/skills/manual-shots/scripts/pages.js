@@ -186,7 +186,26 @@ html{overflow-y:scroll}body{overflow:visible;width:auto!important;height:auto!im
 <div class="t">${title}</div><p>${'詳しくは、このお知らせの本文をご覧ください。'.repeat(1 + (i % 3))}</p></div>`).join('')}</div>
 <style>${NEWS.map(([, color], i) => `.tag[data-c="${i}"]{background:${color}}`).join('')}</style>`, LONG_W, LONG_H)
 
+// 文字の読み取り・色を拾う用。ふつうの字（等幅や黒地でない）のエラー画面。日本語と英語を混ぜる（翻訳の例にもなる）
+const notice = doc(`<style>
+.msg{background:#fff;border:1px solid #e3e6eb;border-radius:8px;padding:16px 20px;font-size:17px;line-height:1.75}
+.msg .t{font-size:20px;font-weight:bold;color:#c0392b;margin-bottom:6px}
+.msg .en{color:#445}
+.msg .code{color:#556;font-size:16px}
+</style>
+<header>ファイルの保存 <small>サンプル</small></header>
+<div class="wrap">
+  <div class="msg">
+    <div class="t">保存できませんでした</div>
+    保存先のフォルダが見つかりません。<br>
+    <span class="en">The destination folder was not found.</span><br>
+    <span class="code">エラーコード：E-1042</span>
+  </div>
+  <div class="btns"><button>閉じる</button><button class="primary">もう一度試す</button></div>
+</div>`, 600, 380)
+
 const PNGS = {
+  'notice': { html: notice, w: 600, h: 380 },
   'account': { html: account, w: 600, h: 420 },
   'settings': { html: settings, w: 600, h: 380 },
   'signup': { html: signup, w: 600, h: 380 },

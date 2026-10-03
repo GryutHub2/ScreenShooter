@@ -52,6 +52,10 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 | `cut` | cut（支出の表の途中の行を X でドラッグして抜く） | なし |
 | `polish` | resize / finish（サイズ 50%・仕上げ「背景つき」と「見る」。編集画面の窓ごと録る） | `--only`、`--gifw=1000` |
 | `focus` | focus（集中モードに入る → 道具が出る → 解除。窓ごと録る） | `--gifw=1000` |
+| `textcolor` | ocr / color（文字を読み取ってコピー・色を拾ってコピー。架空のエラー画面 notice を窓に出す。本物のクリップボードを使い、終わったら戻す） | `--only=ocr` か `--only=color` |
+| `textstyle` | brace / format（かっこ・書式。1回に1本） | `--only=brace` か `--only=format`（必須） |
+| `replace` | replace（赤枠と矢印を描いた「前」を、クリップボードの「後」に差し替える。開き直す窓のために画面全体を無地で覆う） | なし |
+| `tags` | tags（右クリック →「タイトル・タグを付ける」→ Ctrl+F で絞り込み） | `--mode=calib`、`--itemX` `--infoY`（実測 108 / 317） |
 | `editor-calib` | 撮らない。`--page=<架空の画面>` を編集画面で開き、窓全体の静止画と部品の位置を残す | `--page` `--height` |
 
 新しい場面は、既存の1つを写して作る。共通の部品は `harness.js`：

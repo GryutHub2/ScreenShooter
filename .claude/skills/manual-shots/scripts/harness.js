@@ -34,7 +34,7 @@ function boot(scene) {
   app.setPath('userData', UD)
   fs.writeFileSync(path.join(UD, 'settings.json'), JSON.stringify({
     hotkeyRegion: '', saveDir: SAVE, autoBlur: false, libraryPinned: true,
-    recordAudio: false, gifMaxWidth: Number(arg('gifw', '0')), recordFps: 15, gifFps: 10,
+    recordAudio: false, recordAutoBlur: false, recordCountdown: 0, captureCursor: false, gifMaxWidth: Number(arg('gifw', '0')), recordFps: 15, gifFps: 10,
   }), 'utf8')
 
   const MAIN = path.join(ROOT, 'main.js')
@@ -300,6 +300,20 @@ async function openInEditor(ctx, name, height) {
   return { ed, cb, g, at, img, el }
 }
 
+// 本物のキーでは日本語が打てないので、欄に1文字ずつ入れて打っているように見せる（input を流して画面側の処理も走らせる）
+function typeInto(win, sel, text, ms = 130) {
+  return win.webContents.executeJavaScript(`(async () => {
+    const el = document.querySelector(${JSON.stringify(sel)})
+    el.focus()
+    for (const ch of ${JSON.stringify(text)}) {
+      el.value += ch
+      el.selectionStart = el.selectionEnd = el.value.length
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      await new Promise((r) => setTimeout(r, ${ms}))
+    }
+    return true })()`)
+}
+
 let finishing = false
 async function finish(code) {
   if (finishing) return
@@ -332,5 +346,5 @@ function main(scene, body) {
 
 module.exports = {
   ROOT, arg, sleep, log, wins, byUrl, waitFor, phys, physRect,
-  run, mv, cap, overlaysVisible, makeBackdrop, grabClip, makeCaption, moveCaption, caption, makeCursor, clip, grab, main, openInEditor,
+  run, mv, cap, typeInto, overlaysVisible, makeBackdrop, grabClip, makeCaption, moveCaption, caption, makeCursor, clip, grab, main, openInEditor,
 }
