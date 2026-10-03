@@ -11,6 +11,19 @@ const hintEl = document.getElementById('hint')
 const hintSnap = document.getElementById('hintSnap')
 const hintScroll = document.getElementById('hintScroll')
 const hintRecord = document.getElementById('hintRecord')
+const hintOcr = document.getElementById('hintOcr')
+const hintColor = document.getElementById('hintColor')
+const hintReplace = document.getElementById('hintReplace')
+let mode = 'region'
+let colorHex = true      // 色を拾うときの表示。H キーで 16進 ⇔ RGB
+let pixels = null        // 色を拾うときだけ作る、撮った画面の画素
+let cursorOn = false     // マウスカーソルも写すか（設定の値から始まり、M キーで切り替え）
+const cursorBadge = document.getElementById('cursorBadge')
+function showCursorBadge() {
+  cursorBadge.hidden = !(mode === 'region' || mode === 'replace')
+  cursorBadge.textContent = 'M：カーソルを' + (cursorOn ? '写す' : '写さない')
+  cursorBadge.classList.toggle('on', cursorOn)
+}
 const loupeEl = document.getElementById('loupe')
 const loupeCv = document.getElementById('loupeCv')
 const loupeInfo = document.getElementById('loupeInfo')
@@ -42,6 +55,11 @@ let snapIndex = 0
 
 window.api.on('overlay:init', (d) => {
   displayId = d.displayId
+  mode = d.mode || 'region'
+  cursorOn = !!d.cursorOn
+  showCursorBadge()
+  const otherHint = { ocr: hintOcr, color: hintColor, replace: hintReplace }[mode]
+  if (otherHint) { hintEl.hidden = true; otherHint.hidden = false }
   if (d.mode === 'scroll') {
     hintEl.hidden = true
     hintScroll.hidden = false
@@ -109,7 +127,8 @@ function rectHas(r, x, y) {
 // いちばん手前にある窓を1つだけ選び、その窓と、カーソルの下にある部品を候補にする。
 // 奥に隠れている窓を拾わないよう、手前から探して最初に当たったところで止める。
 function computeSnap(x, y) {
-  if (!winRects || x < 0 || y < 0) { snapList = null; snapKey = ''; return }
+  // 色を拾うときは点を選ぶので、窓への吸い付きは出さない
+  if (!winRects || x < 0 || y < 0 || mode === 'color') { snapList = null; snapKey = ''; return }
   let found = null
   for (const w of winRects) {
     if (rectHas(w.r, x, y)) { found = w; break }
@@ -171,7 +190,9 @@ function updateLoupe(x, y) {
   lctx.lineWidth = 2
   lctx.strokeRect(c + 1, c + 1, zoom - 2, zoom - 2)
 
-  if (dragging) {
+  if (mode === 'color') {
+    loupeInfo.textContent = colorText(colorAt(x, y))
+  } else if (dragging) {
     const r = currentRect()
     loupeInfo.textContent = Math.round(r.w * scaleX) + ' × ' + Math.round(r.h * scaleY)
   } else {
@@ -187,12 +208,34 @@ function updateLoupe(x, y) {
   loupeEl.style.top = Math.max(4, ly) + 'px'
 }
 
+// ---------------------------------------------------------------- 色を拾う
+
+// 画面の点（CSS px）の色。撮った画面の実ピクセルから読む
+function colorAt(x, y) {
+  if (!pixels) {
+    if (!img.complete || !img.naturalWidth) return [0, 0, 0]
+    const c = document.createElement('canvas')
+    c.width = img.naturalWidth
+    c.height = img.naturalHeight
+    const g = c.getContext('2d', { willReadFrequently: true })
+    g.drawImage(img, 0, 0)
+    pixels = g.getImageData(0, 0, c.width, c.height)
+  }
+  const px = Math.max(0, Math.min(pixels.width - 1, Math.floor(x * scaleX)))
+  const py = Math.max(0, Math.min(pixels.height - 1, Math.floor(y * scaleY)))
+  const i = (py * pixels.width + px) * 4
+  return [pixels.data[i], pixels.data[i + 1], pixels.data[i + 2]]
+}
+
+function hexOf(c) { return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase() }
+function colorText(c) { return colorHex ? hexOf(c) : c.join(', ') }
+
 // ---------------------------------------------------------------- 結果を返す
 
 function finish(rect) {
   if (done) return
   done = true
-  window.api.send('overlay:select', { displayId, rect })
+  window.api.send('overlay:select', { displayId, rect, cursor: cursorOn })
 }
 
 function cancel() {
@@ -215,6 +258,13 @@ window.addEventListener('pointerdown', (e) => {
   if (done) return
   if (e.button !== 0) { cancel(); return }
   const p = pointFrom(e)
+  // 色を拾うときは、押した点の色を返して終わる（範囲は取らない）
+  if (mode === 'color') {
+    done = true
+    const c = colorAt(p.x, p.y)
+    window.api.send('overlay:color', { hex: hexOf(c), rgb: c.join(', '), text: colorText(c) })
+    return
+  }
   dragging = true
   startX = lastX = p.x
   startY = lastY = p.y
@@ -282,7 +332,17 @@ window.addEventListener('keydown', (e) => {
   if (done) return
   if (e.key === 'Escape') { e.preventDefault(); cancel(); return }
   if (e.key.startsWith('Arrow')) { e.preventDefault(); nudge(e); return }
-  if (e.code === 'Space') {
+  if ((mode === 'region' || mode === 'replace') && (e.key === 'm' || e.key === 'M')) {
+    cursorOn = !cursorOn
+    showCursorBadge()
+    return
+  }
+  if (mode === 'color' && (e.key === 'h' || e.key === 'H')) {
+    colorHex = !colorHex
+    if (curX >= 0) updateLoupe(curX, curY)
+    return
+  }
+  if (e.code === 'Space' && mode !== 'color') {
     e.preventDefault()
     finish({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight })
   }

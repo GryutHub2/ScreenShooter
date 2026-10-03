@@ -5,6 +5,7 @@ const emptyEl = document.getElementById('empty')
 const btnPin = document.getElementById('btnPin')
 const countEl = document.getElementById('count')
 const dkOpen = document.getElementById('dkOpen')
+const searchEl = document.getElementById('search')
 
 let items = []   // 本体から届いた順（新しい順）
 let shown = []   // 画面に並べている順（設定の並び順）
@@ -161,6 +162,8 @@ function render(data) {
 
   for (const el of Array.from(strip.querySelectorAll('.card'))) el.remove()
   emptyEl.hidden = items.length > 0
+  emptyEl.textContent = searchEl.value.trim() ? '「' + searchEl.value.trim() + '」に当てはまるものはありません。' : emptyEl.dataset.text || emptyEl.textContent
+  if (!emptyEl.dataset.text && !searchEl.value.trim()) emptyEl.dataset.text = emptyEl.textContent
 
   // 一覧は新しい順で届く。並べるのは設定の並び順（既定は古い順＝最新が右下）
   for (const it of shown) {
@@ -169,7 +172,8 @@ function render(data) {
     card.dataset.id = it.id
     card.draggable = true
     const isVideo = it.kind === 'video'
-    card.title = (it.name ? it.name + '\n' : '')
+    card.title = (it.title ? it.title + '\n' : '') + (it.name ? it.name + '\n' : '')
+      + (it.tags && it.tags.length ? 'タグ：' + it.tags.join('、') + '\n' : '')
       + it.width + ' × ' + it.height + ' px　' + timeLabel(it.createdAt)
       + (it.savedPath ? '\n' + it.savedPath : '')
       + '\nドラッグで他のアプリへ渡せる（原寸のファイル。何枚か選んでいればまとめて渡る）'
@@ -204,7 +208,9 @@ function render(data) {
 
     const cap = document.createElement('span')
     cap.className = 'cap'
-    cap.textContent = timeLabel(it.createdAt)
+    // タイトルを付けたものは、時刻の代わりにタイトルを出す
+    cap.textContent = it.title ? it.title : timeLabel(it.createdAt)
+    if (it.title) cap.classList.add('titled')
 
     card.appendChild(shot)
     card.appendChild(cap)
@@ -291,6 +297,23 @@ strip.addEventListener('contextmenu', (e) => {
 })
 
 window.addEventListener('keydown', (e) => {
+  // 入力欄の中では、文字を打つ・消すのを邪魔しない
+  if (!infoForm.hidden) {
+    if (e.key === 'Escape') { e.preventDefault(); closeInfo() }
+    else if (e.key === 'Enter') { e.preventDefault(); submitInfo() }
+    return
+  }
+  if (e.target === searchEl) {
+    if (e.key === 'Escape') { e.preventDefault(); searchEl.value = ''; sendQuery(); searchEl.blur() }
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); searchEl.focus(); searchEl.select(); return }
+  if (e.key === 'F2') {
+    e.preventDefault()
+    const ids = orderedSelection()
+    if (ids.length === 1) window.api.send('library:askInfo', { id: ids[0], what: 'rename' })
+    return
+  }
   if (e.key === 'Escape') { selectOnly(null); return }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
     e.preventDefault()
@@ -339,6 +362,64 @@ dkOpen.addEventListener('click', () => {
 })
 document.getElementById('dkFolder').addEventListener('click', () => window.api.invoke('app:openFolder'))
 document.getElementById('dkClose').addEventListener('click', () => window.api.send('app:closeWindow'))
+
+// ---- 絞り込み。打つたびに本体へ送る（履歴全体から探して、当てはまるものを最大80件届けてくる）
+let queryTimer = null
+function sendQuery() {
+  clearTimeout(queryTimer)
+  window.api.send('library:query', searchEl.value)
+}
+searchEl.addEventListener('input', () => {
+  clearTimeout(queryTimer)
+  queryTimer = setTimeout(sendQuery, 200)
+})
+
+// ---- 名前を変える・タイトルとタグ
+const infoForm = document.getElementById('infoForm')
+const infoErr = document.getElementById('infoErr')
+let infoFor = null   // { id, what }
+
+function closeInfo() {
+  infoForm.hidden = true
+  infoFor = null
+}
+
+window.api.on('library:editInfo', (d) => {
+  if (!d) return
+  infoFor = { id: d.id, what: d.what }
+  const rename = d.what === 'rename'
+  document.getElementById('infoTitle').textContent = rename ? '名前を変える（保存先のファイルの名前も変わります）' : 'タイトル・タグを付ける（絞り込みで探せます）'
+  document.getElementById('rowName').hidden = !rename
+  document.getElementById('rowTitle').hidden = rename
+  document.getElementById('rowTags').hidden = rename
+  document.getElementById('infoName').value = d.name || ''
+  document.getElementById('infoExt').textContent = d.ext || ''
+  document.getElementById('infoTitleIn').value = d.title || ''
+  document.getElementById('infoTags').value = d.tags || ''
+  infoErr.textContent = ''
+  infoForm.hidden = false
+  const first = document.getElementById(rename ? 'infoName' : 'infoTitleIn')
+  first.focus()
+  first.select()
+})
+
+async function submitInfo() {
+  if (!infoFor) return
+  let r = null
+  if (infoFor.what === 'rename') {
+    r = await window.api.invoke('library:rename', { id: infoFor.id, name: document.getElementById('infoName').value })
+  } else {
+    r = await window.api.invoke('library:saveInfo', {
+      id: infoFor.id,
+      title: document.getElementById('infoTitleIn').value,
+      tags: document.getElementById('infoTags').value,
+    })
+  }
+  if (r && r.ok) closeInfo()
+  else infoErr.textContent = (r && r.error) || 'できませんでした'
+}
+document.getElementById('infoOk').addEventListener('click', submitInfo)
+document.getElementById('infoCancel').addEventListener('click', closeInfo)
 
 window.api.on('library:items', render)
 window.api.invoke('library:list')

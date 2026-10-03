@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'">
+<title>ScreenShooter — 読み取った文字</title>
+<link rel="stylesheet" href="ocr.css">
+</head>
+<body>
+<div id="head">
+  <span id="title">読み取った文字</span>
+  <span id="note">直してからコピーできます。読み取りはこのパソコンの中だけで行います</span>
+</div>
+<textarea id="text" spellcheck="false"></textarea>
+<div id="trBox" hidden>
+  <div id="trHead">
+    <span>翻訳（Claude）</span>
+    <select id="trLang" class="pick">
+      <option value="日本語">日本語へ</option>
+      <option value="英語">英語へ</option>
+    </select>
+    <span id="trStatus"></span>
+  </div>
+  <textarea id="trText" spellcheck="false" readonly></textarea>
+</div>
+<div id="bar">
+  <button id="btnTranslate" hidden title="上の文字を Claude に送って翻訳します（文字だけを送ります。絵は送りません）">Claude で翻訳</button>
+  <span class="spacer"></span>
+  <button id="btnCopySel" title="選んだ所だけをコピーして閉じます">選んだ所をコピー</button>
+  <button id="btnCopyTr" hidden title="翻訳した文をコピーして閉じます">翻訳をコピー</button>
+  <button id="btnCopyAll" class="primary" title="全部コピーして閉じます（Ctrl+Enter）">全部コピー</button>
+  <button id="btnClose" title="コピーせずに閉じます（Esc）">閉じる</button>
+</div>
+<script src="ocr.js"></script>
+</body>
+</html>

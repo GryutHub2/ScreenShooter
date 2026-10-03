@@ -12,6 +12,7 @@
   <span id="title">履歴パネル</span>
   <span id="hint" title="ダブルクリックで開く／Ctrl+C でコピー／Ctrl+V で貼った画像を足す／Ctrl+クリックで複数えらぶ／ドラッグでまとめて渡す／画像を落とすと取り込む">ダブルクリックで開く／Ctrl+C でコピー／Ctrl+V で貼った画像を足す／Ctrl+クリックで複数えらぶ／ドラッグでまとめて渡す／画像を落とすと取り込む</span>
   <span class="spacer"></span>
+  <input id="search" type="search" placeholder="絞り込み（Ctrl+F）" title="ファイル名・タイトル・タグ・撮った日（2026-10-03 や 10/3）で絞り込みます。空白で区切ると全部を含むものだけ" spellcheck="false">
   <span id="count" hidden></span>
   <button id="btnPin" title="ピン留め（出しっぱなしにする）">
     <svg viewBox="0 0 20 20"><path d="M12.5 2.5l5 5-2.2.6-3.4 3.4-.4 3.6-5.6-5.6 3.6-.4L12.9 5.7zM7 13L3 17"/></svg>
@@ -20,6 +21,18 @@
 
 <div id="strip">
   <p id="empty">まだ1枚もありません。<b>Ctrl+Shift+S</b> で撮ると、ここに並びます。</p>
+</div>
+
+<!-- 名前を変える・タイトルとタグ（右クリック・F2）。パネルの中に重ねて出す -->
+<div id="infoForm" hidden>
+  <div id="infoBox">
+    <div id="infoTitle"></div>
+    <label class="infoRow" id="rowName">名前 <input id="infoName" spellcheck="false"><span id="infoExt"></span></label>
+    <label class="infoRow" id="rowTitle">タイトル <input id="infoTitleIn" spellcheck="false" placeholder="例：請求画面のエラー"></label>
+    <label class="infoRow" id="rowTags">タグ <input id="infoTags" spellcheck="false" placeholder="読点か空白で区切る（例：経理、手順書）"></label>
+    <div id="infoErr"></div>
+    <div class="infoBtns"><button id="infoCancel">やめる</button><button id="infoOk" class="primary">決める</button></div>
+  </div>
 </div>
 
 <div id="dropHint" hidden>ここに落とすと、この絵を取り込んで開きます</div>

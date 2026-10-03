@@ -89,7 +89,7 @@ button:disabled:hover { background: transparent; }
   align-items: center;
   gap: 1px;
   /* 文字を履歴パネル並みにした幅。広げると段が増えて絵が下へずれるので、main.js の CHROME と合わせて変える */
-  width: 56px;
+  width: 55px;
   padding: 4px 0 3px;
   line-height: 1;
 }
@@ -372,6 +372,27 @@ body.focus #finishPreview { padding: 10px 10px 6px; -webkit-app-region: no-drag;
 #rzHint { min-height: 22px; margin-top: 4px; color: #ffd27a; font-size: 14.5px; line-height: 1.5; }
 .rzNote { margin-top: 10px; color: var(--fg-dim); font-size: 13.5px; line-height: 1.6; }
 .rzBtns { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+
+/* 書式のパネルと、撮り直し・差し替えのメニュー。ボタンの下に浮かせる */
+#fmtPanel, #replaceMenu {
+  position: fixed;
+  z-index: 20;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+}
+#fmtPanel { display: flex; align-items: center; gap: 6px; }
+#fmtPanel[hidden], #replaceMenu[hidden] { display: none; }
+.fmt { height: 30px; min-width: 34px; padding: 0 8px; border-color: var(--line); }
+.fmt.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fmtSep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+#replaceMenu { display: flex; flex-direction: column; gap: 2px; min-width: 330px; }
+#replaceMenu button { text-align: left; height: 34px; padding: 0 12px; border: none; background: transparent; }
+#replaceMenu button:hover { background: var(--panel2); }
+#replaceMenu button[hidden] { display: none; }
+.rmNote { color: var(--fg-dim); font-size: 13px; padding: 6px 12px 2px; }
 #padBox { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .padTitle { font-weight: 600; margin-bottom: 8px; }
 .padRow { display: flex; align-items: center; gap: 10px; min-height: 40px; flex-wrap: wrap; }

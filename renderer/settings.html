@@ -50,6 +50,18 @@
     <button class="mini" id="clearDelay" title="割り当てを消す">消す</button>
   </div>
 
+  <div class="row">
+    <label for="keyOcr">文字を読み取ってコピー</label>
+    <button class="keyfield" id="keyOcr"></button>
+    <button class="mini" id="clearOcr" title="割り当てを消す">消す</button>
+  </div>
+
+  <div class="row">
+    <label for="keyColor">色を拾ってコピー</label>
+    <button class="keyfield" id="keyColor"></button>
+    <button class="mini" id="clearColor" title="割り当てを消す">消す</button>
+  </div>
+
   <p class="warn" id="warn" hidden></p>
 </section>
 
@@ -61,6 +73,9 @@
     <button class="mini" id="openDir">開く</button>
   </div>
   <p class="note">撮った瞬間に、ここへ PNG で入ります。</p>
+  <label class="check"><input type="checkbox" id="embedEdits"> 書き込み版（_書き込み.png）に、図形を動かせる情報も入れる</label>
+  <p class="note">人に渡すと、ふつうは書き込み入りの絵に見えます。ScreenShooter を使っている人が履歴パネルに落とすと、元の絵と<b>動かせる図形</b>として開けます（チームで直し合うとき用）。
+    元の絵を中に入れるので、ファイルは約2倍の大きさになります。</p>
 </section>
 
 <section>
@@ -102,6 +117,8 @@
   <p class="note">範囲選択のときに、マウスを乗せた窓や、その中の部品（メニューバーなど）に青い枠が付きます。
     そのまま<b>クリック</b>すればその範囲を撮れます（<b>ホイール</b>で範囲を広げたり狭めたり）。
     ドラッグすればこれまで通り自由に選べます。</p>
+  <label class="check"><input type="checkbox" id="captureCursor"> マウスカーソルも写す</label>
+  <p class="note">撮った絵の上に、カーソルの絵を「動かせる・消せる図形」として置きます（絵には焼き込みません）。範囲を選ぶ画面で <b>M</b> キーを押すと、その1枚だけ写す・写さないを切り替えられます。</p>
   <div class="row">
     <label for="delaySeconds">時間差の秒数</label>
     <input type="number" id="delaySeconds" class="num" min="1" max="60" step="1">
@@ -168,6 +185,17 @@
     </select>
   </div>
   <label class="check"><input type="checkbox" id="recAudio"> パソコンで鳴っている音も一緒に録る</label>
+  <label class="check"><input type="checkbox" id="recAutoBlur"> 録画中も個人情報を自動でぼかす</label>
+  <p class="note">録るあいだ 2〜3 秒ごとに画面の文字を読み、上の「自動ぼかし」と同じ決まりで見つけた所にモザイクをかけたまま録ります（動画にも GIF にも入ります）。
+    読み取りの合間にスクロールした所は見落とすことがあるので、録ったあと必ず自分の目でも確かめてください。</p>
+  <div class="row">
+    <label for="recCountdown">録る前のカウントダウン</label>
+    <select class="pick" id="recCountdown">
+      <option value="0">なし（すぐ録る）</option>
+      <option value="3">3 秒</option>
+      <option value="5">5 秒</option>
+    </select>
+  </div>
   <div class="row rowtop">
     <label for="gifWidth">GIF の横幅の上限</label>
     <select class="pick" id="gifWidth">
@@ -214,6 +242,14 @@
   <label class="check"><input type="checkbox" id="sendToMenu"> 右クリックの「送る」に「ScreenShooterで開く」を出す</label>
   <p class="note">画像を右クリック →「その他のオプションを表示」→「送る」→「ScreenShooterで開く」で、その絵をこのアプリで開けます。
   履歴パネルに画像をドラッグして落としても同じです。どちらも保存先フォルダにコピーしてから開くので、元のファイルはそのまま残ります。</p>
+</section>
+
+<section>
+  <h2>AI（Claude）</h2>
+  <label class="check"><input type="checkbox" id="claudeTranslate"> 読み取った文字を Claude で翻訳するボタンを出す</label>
+  <p class="note"><b>オンにすると、翻訳を押したときに読み取った文字（絵ではなく文字だけ）を Anthropic のサーバーへ送ります。</b>
+    機密情報が写っている画面では使わないでください。会社のパソコンで使うときは、社内の決まりを確かめてからオンにしてください。
+    このパソコンの Claude（Claude Code）にログインしている必要があります。翻訳は軽いモデル（Haiku）で行います。</p>
 </section>
 
 <section>

@@ -89,7 +89,7 @@ html, body {
   text-align: center;
 }
 
-#hint, #hintScroll, #hintRecord {
+#hint, #hintScroll, #hintRecord, #hintOcr, #hintColor, #hintReplace {
   position: fixed;
   left: 50%;
   top: 28px;
@@ -102,7 +102,22 @@ html, body {
   white-space: nowrap;
   pointer-events: none;
 }
-#hint b, #hintScroll b, #hintRecord b { color: #ffd166; font-weight: 600; }
+#hint b, #hintScroll b, #hintRecord b, #hintOcr b, #hintColor b, #hintReplace b { color: #ffd166; font-weight: 600; }
+#hintOcr, #hintReplace { background: rgba(30, 80, 60, 0.92); }
+/* カーソルを写すかの表示（M キーで切り替え）。案内の下に小さく出す */
+#cursorBadge {
+  position: fixed;
+  left: 50%;
+  top: 66px;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.78);
+  color: #c9ccd1;
+  font-size: 12px;
+  pointer-events: none;
+}
+#cursorBadge.on { color: #ffd166; }
 #hintScroll { background: rgba(30, 58, 95, 0.92); }
 #hintRecord { background: rgba(94, 30, 30, 0.92); }
 

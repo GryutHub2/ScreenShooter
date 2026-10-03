@@ -1,0 +1,53 @@
+:root {
+  --bg: #23262b;
+  --panel: #2c3037;
+  --line: #454a53;
+  --fg: #e8eaed;
+  --fg-dim: #a9afb8;
+  --accent: #3b82f6;
+}
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+}
+#head { display: flex; align-items: baseline; gap: 12px; }
+#title { font-size: 17px; font-weight: 600; }
+#note { color: var(--fg-dim); font-size: 13px; }
+textarea {
+  flex: 1 1 auto;
+  min-height: 80px;
+  resize: none;
+  padding: 8px 10px;
+  font: 16px/1.6 "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+#trBox { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+#trBox[hidden] { display: none; }
+#trHead { display: flex; align-items: center; gap: 10px; }
+#trStatus { color: var(--fg-dim); font-size: 13px; }
+#bar { display: flex; align-items: center; gap: 8px; }
+.spacer { flex: 1 1 auto; }
+button, .pick {
+  font: inherit;
+  height: 32px;
+  padding: 0 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+button:hover, .pick:hover { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }

@@ -29,11 +29,21 @@ const FINISHES = ['none', 'border', 'round', 'shadow', 'backdrop']
 const FINISH_LABELS = { none: 'そのまま', border: '黒い縁取り', round: '角を丸める', shadow: '影つき', backdrop: '背景つき' }
 // 線の種類。値は図形（`dash`）と設定（lineDash）にそのまま入るので、増やすときは main.js の LINE_DASHES も直す
 const LINE_DASHES = ['solid', 'dash', 'dot']
-const DASH_TYPES = new Set(['rect', 'ellipse', 'line', 'arrow'])
+const DASH_TYPES = new Set(['rect', 'ellipse', 'line', 'arrow', 'brace'])
 // 四角の角の丸み（px）。main.js の RECT_RADII と同じ
 const RECT_RADII = [0, 6, 12, 20]
 // 拡大鏡の倍率。main.js の ZOOM_FACTORS と同じ
 const ZOOM_FACTORS = [1.5, 2, 2.5, 3, 4]
+// 文字の書体。値は図形（`face`）と設定（textFace）に入るので、増やすときは main.js の TEXT_FACES も直す。
+// 会社のパソコンにも入っている Windows 標準の書体だけを使う（無い書体は別の書体に化けて、幅が変わり折り返しがずれるため）
+const TEXT_FACES = {
+  gothic: { label: 'ゴシック（游ゴシック）', css: '"Yu Gothic UI", "Meiryo", system-ui, sans-serif' },
+  meiryo: { label: 'メイリオ', css: '"Meiryo", "Yu Gothic UI", sans-serif' },
+  ud: { label: 'UD ゴシック（読みやすい）', css: '"BIZ UDPGothic", "Yu Gothic UI", sans-serif' },
+  mincho: { label: '明朝（游明朝）', css: '"Yu Mincho", "MS PMincho", serif' },
+  arial: { label: 'Arial（英数字）', css: 'Arial, "Yu Gothic UI", sans-serif' },
+}
+const TEXT_ALIGNS = ['left', 'center', 'right']
 
 // 段階を増減したとき、前回の値がボタンに無いと「どれも選ばれていない」状態になるので近い段階に寄せる
 function nearest(list, v) {
@@ -59,6 +69,12 @@ const state = {
   lineDash: 'solid',  // 四角・丸・直線・矢印の線の種類（LINE_DASHES）
   rectRadius: 0,      // 四角の角の丸み（RECT_RADII）
   zoomK: 2,           // 新しく置く拡大鏡の倍率（ZOOM_FACTORS）
+  // 文字の書式（新しく置く文字の）。図形には face / bold / italic / underline / align として入る
+  textFace: 'gothic',
+  textBold: true,
+  textItalic: false,
+  textUnderline: false,
+  textAlign: 'left',
   zoom: 1,
   fit: true,
   undo: [],
@@ -201,9 +217,70 @@ function drawShape(g, s, list) {
     else drawBubble(g, s, true)
   } else if (s.type === 'zoom') {
     drawZoom(g, s, list || state.shapes)
+  } else if (s.type === 'brace') {
+    drawBrace(g, s)
+  } else if (s.type === 'image') {
+    const im = imageOf(s.src)
+    const r = norm(s)
+    if (im.complete && im.naturalWidth) g.drawImage(im, r.x, r.y, r.w, r.h)
   }
   // スポットライト（spot）は1つずつは描かない。paintScene がまとめて暗幕を塗る
   g.restore()
+}
+
+// 画像の図形（写したカーソルなど）の絵。読み込みは非同期なので、読めたら描き直す
+const imageCache = new Map()
+function imageOf(src) {
+  let im = imageCache.get(src)
+  if (!im) {
+    im = new Image()
+    im.onload = () => { if (state.img) draw() }
+    im.src = src
+    imageCache.set(src, im)
+  }
+  return im
+}
+// 書き出す前に、画像の図形が全部読めるまで待つ（見えない編集画面は読み込みの前に書き出してしまうため）
+function imagesReady() {
+  const list = state.shapes.filter((s) => s.type === 'image').map((s) => imageOf(s.src))
+  return Promise.all(list.map((im) => (im.complete ? Promise.resolve()
+    : new Promise((r) => { im.addEventListener('load', r, { once: true }); im.addEventListener('error', r, { once: true }) }))))
+}
+
+// 中かっこ。引いた向きの先にとがった所が来る（範囲 → 説明、の順に引けば説明の側を指す）。
+// 縦長に引けば縦の ｛、横長に引けば横の ︷
+function drawBrace(g, s) {
+  const r = norm(s)
+  const vertical = r.h >= r.w
+  g.beginPath()
+  if (vertical) {
+    const back = s.x2 >= s.x1 ? r.x : r.x + r.w
+    const tip = s.x2 >= s.x1 ? r.x + r.w : r.x
+    const mid = (back + tip) / 2
+    const c = Math.min(r.w / 2 + 1, r.h / 4)
+    const y0 = r.y, y1 = r.y + r.h, ym = r.y + r.h / 2
+    g.moveTo(back, y0)
+    g.quadraticCurveTo(mid, y0, mid, y0 + c)
+    g.lineTo(mid, ym - c)
+    g.quadraticCurveTo(mid, ym, tip, ym)
+    g.quadraticCurveTo(mid, ym, mid, ym + c)
+    g.lineTo(mid, y1 - c)
+    g.quadraticCurveTo(mid, y1, back, y1)
+  } else {
+    const back = s.y2 >= s.y1 ? r.y : r.y + r.h
+    const tip = s.y2 >= s.y1 ? r.y + r.h : r.y
+    const mid = (back + tip) / 2
+    const c = Math.min(r.h / 2 + 1, r.w / 4)
+    const x0 = r.x, x1 = r.x + r.w, xm = r.x + r.w / 2
+    g.moveTo(x0, back)
+    g.quadraticCurveTo(x0, mid, x0 + c, mid)
+    g.lineTo(xm - c, mid)
+    g.quadraticCurveTo(xm, mid, xm, tip)
+    g.quadraticCurveTo(xm, mid, xm + c, mid)
+    g.lineTo(x1 - c, mid)
+    g.quadraticCurveTo(x1, mid, x1, back)
+  }
+  g.stroke()
 }
 
 // 破線・点線の間隔は線の太さに比例させる（太い線で細かい破線にすると、つぶれて実線に見えるため）。
@@ -574,8 +651,19 @@ function zoomPart(s, p, tol) {
   return outer && !inner ? 'frame' : null
 }
 
-function textFont(s) {
-  return '600 ' + s.fontSize + 'px "Yu Gothic UI", "Meiryo", system-ui, sans-serif'
+// 書式の無い（前からある）文字は、游ゴシックの太字・左寄せ
+function faceCss(s) { return (TEXT_FACES[s.face] || TEXT_FACES.gothic).css }
+function textFont(s, px) {
+  return (s.italic ? 'italic ' : '') + (s.bold === false ? '400 ' : '600 ') + (px || s.fontSize) + 'px ' + faceCss(s)
+}
+
+// 行の書き出し位置。中央・右寄せは、その行の幅を測って枠（枠の無い文字はいちばん長い行）の中で寄せる
+function lineX(g, s, t, line) {
+  const al = s.align || 'left'
+  if (al === 'left') return t.x
+  const width = s.box ? t.w : t.wmax
+  const lw = g.measureText(line).width
+  return al === 'center' ? t.x + (width - lw) / 2 : t.x + width - lw
 }
 
 const WHITE_HALO = 'rgba(255,255,255,.92)'
@@ -661,8 +749,10 @@ function drawText(g, s) {
   const stroke = Math.max(2, s.fontSize * (s.halo || HALO_DEFAULT))
   // 影のぼかし幅とずれは canvas の変換（拡大表示）が効かないので、ここだけ自分で倍率を掛ける
   const sc = g.getTransform ? (g.getTransform().a || 1) : 1
+  if (!s.box && (s.align || 'left') !== 'left') t.wmax = Math.max(0, ...lines.map((l) => g.measureText(l).width))
   for (let i = 0; i < lines.length; i++) {
     const y = t.y + i * lh
+    const lx = lineX(g, s, t, lines[i])
     if (shadow) {
       g.save()
       g.shadowColor = 'rgba(0,0,0,.55)'
@@ -670,17 +760,23 @@ function drawText(g, s) {
       g.shadowOffsetX = Math.max(1, s.fontSize * 0.05) * sc
       g.shadowOffsetY = Math.max(1, s.fontSize * 0.08) * sc
       // 影を落とすためだけに一度描く。縁取りがあるならその形で落とすと輪郭がはっきりする
-      if (halo) { g.strokeStyle = halo; g.lineWidth = stroke; g.strokeText(lines[i], t.x, y) }
-      else { g.fillStyle = s.color; g.fillText(lines[i], t.x, y) }
+      if (halo) { g.strokeStyle = halo; g.lineWidth = stroke; g.strokeText(lines[i], lx, y) }
+      else { g.fillStyle = s.color; g.fillText(lines[i], lx, y) }
       g.restore()
     }
     if (halo) {
       g.strokeStyle = halo
       g.lineWidth = stroke
-      g.strokeText(lines[i], t.x, y)
+      g.strokeText(lines[i], lx, y)
     }
     g.fillStyle = s.color
-    g.fillText(lines[i], t.x, y)
+    g.fillText(lines[i], lx, y)
+    // 下線は字と同じ色で、字の下端のすぐ下に引く
+    if (s.underline && lines[i]) {
+      const uw = g.measureText(lines[i]).width
+      const th = Math.max(1, s.fontSize * 0.07)
+      g.fillRect(lx, y + s.fontSize * 1.1, uw, th)
+    }
   }
 }
 
@@ -2036,7 +2132,7 @@ function hitShape(s, p) {
   const r = norm(s)
   const inside = p.x >= r.x - tol && p.x <= r.x + r.w + tol && p.y >= r.y - tol && p.y <= r.y + r.h + tol
   if (!inside) return false
-  if (s.type === 'blur' || s.type === 'step') return true
+  if (s.type === 'blur' || s.type === 'step' || s.type === 'image' || s.type === 'brace') return true
   // 四角は中が空なので、枠の近くだけを当たりにする（重なった図形を掴み分けられるように）
   const inner = p.x > r.x + tol && p.x < r.x + r.w - tol && p.y > r.y + tol && p.y < r.y + r.h - tol
   return !inner
@@ -2256,8 +2352,10 @@ function styleTextEditor(s) {
   // 吹き出しの字は枠の色ではなく、地に合わせた黒（暗い地なら白）
   const ink = s.bubble ? bubbleColors(s).ink : s.color
   textEdit.style.color = ink
-  textEdit.style.font = '600 ' + px + 'px "Yu Gothic UI", "Meiryo", system-ui, sans-serif'
+  textEdit.style.font = textFont(s, px)
   textEdit.style.lineHeight = (px * 1.28) + 'px'
+  textEdit.style.textAlign = s.align || 'left'
+  textEdit.style.textDecoration = s.underline ? 'underline' : 'none'
   // 枠のある文字は白い欄の中で折り返す。白い字だと白地に消えるので、明るい色のときだけ地を暗くする
   textEdit.wrap = s.box ? 'soft' : 'off'
   textEdit.classList.toggle('box', !!s.box)
@@ -2381,6 +2479,7 @@ cv.addEventListener('pointerdown', (e) => {
     pending = {
       id: nextId++, type: 'text', color: state.color, width: state.lineWidth,
       fontSize: state.fontSize, deco: state.deco, halo: state.halo,
+      face: state.textFace, bold: state.textBold, italic: state.textItalic, underline: state.textUnderline, align: state.textAlign,
       x1: p.x, y1: p.y, x2: p.x, y2: p.y, text: '',
     }
     if (state.tool === 'bubble') pending.bubble = true
@@ -2738,6 +2837,14 @@ function applyStyle(patch) {
     if (patch.fontSize && s.type === 'text') { s.fontSize = patch.fontSize; fitTextBox(s) }
     if (patch.deco && s.type === 'text') s.deco = patch.deco
     if (patch.halo && s.type === 'text') s.halo = patch.halo
+    if (s.type === 'text') {
+      if (patch.textFace) s.face = patch.textFace
+      if (typeof patch.textBold === 'boolean') s.bold = patch.textBold
+      if (typeof patch.textItalic === 'boolean') s.italic = patch.textItalic
+      if (typeof patch.textUnderline === 'boolean') s.underline = patch.textUnderline
+      if (patch.textAlign) s.align = patch.textAlign
+      fitTextBox(s)
+    }
     if (patch.lineDash && DASH_TYPES.has(s.type)) { if (patch.lineDash === 'solid') delete s.dash; else s.dash = patch.lineDash }
     if (typeof patch.rectRadius === 'number' && s.type === 'rect') { if (patch.rectRadius > 0) s.radius = patch.rectRadius; else delete s.radius }
     // 拡大鏡の倍率は、のぞき窓の中心を動かさずに丸の大きさで変える
@@ -2760,6 +2867,8 @@ function applyStyle(patch) {
     color: state.color, markerColor: state.markerColor, lineWidth: state.lineWidth, markerWidth: state.markerWidth,
     fontSize: state.fontSize, deco: state.deco, halo: state.halo,
     lineDash: state.lineDash, rectRadius: state.rectRadius, zoomK: state.zoomK,
+    textFace: state.textFace, textBold: state.textBold, textItalic: state.textItalic,
+    textUnderline: state.textUnderline, textAlign: state.textAlign,
   })
   updateUi()
   draw()
@@ -2844,6 +2953,85 @@ fillPick(zoomKEl, ZOOM_FACTORS, (v) => v + ' 倍')
 lineDashEl.addEventListener('change', () => { applyStyle({ lineDash: lineDashEl.value }); lineDashEl.blur() })
 rectRadiusEl.addEventListener('change', () => { applyStyle({ rectRadius: Number(rectRadiusEl.value) }); rectRadiusEl.blur() })
 zoomKEl.addEventListener('change', () => { applyStyle({ zoomK: Number(zoomKEl.value) }); zoomKEl.blur() })
+
+// ---- 書式のパネル（書体・太字・斜体・下線・寄せ）。選んでいる文字（無ければ次に置く文字）に当てる
+const fmtPanel = document.getElementById('fmtPanel')
+const fmtFaceEl = document.getElementById('fmtFace')
+for (const [k, v] of Object.entries(TEXT_FACES)) {
+  const o = document.createElement('option')
+  o.value = k
+  o.textContent = v.label
+  fmtFaceEl.appendChild(o)
+}
+// 選んでいる文字（入力中ならその文字）の書式。無ければ次に置く文字の書式
+function fmtNow() {
+  const s = editingShape || byId(state.selectedId)
+  if (s && s.type === 'text') {
+    return { face: s.face || 'gothic', bold: s.bold !== false, italic: !!s.italic, underline: !!s.underline, align: s.align || 'left' }
+  }
+  return { face: state.textFace, bold: state.textBold, italic: state.textItalic, underline: state.textUnderline, align: state.textAlign }
+}
+function syncFmt() {
+  const f = fmtNow()
+  fmtFaceEl.value = f.face
+  document.getElementById('fmtB').classList.toggle('on', f.bold)
+  document.getElementById('fmtI').classList.toggle('on', f.italic)
+  document.getElementById('fmtU').classList.toggle('on', f.underline)
+  fmtPanel.querySelectorAll('[data-align]').forEach((b) => b.classList.toggle('on', b.dataset.align === f.align))
+}
+function setFmt(patch) {
+  // 入力中の文字は確定前なので「元に戻す」には積まず、入力欄の見た目だけ合わせ直す
+  if (editingShape) {
+    const s = editingShape
+    if (patch.textFace) s.face = patch.textFace
+    if (typeof patch.textBold === 'boolean') s.bold = patch.textBold
+    if (typeof patch.textItalic === 'boolean') s.italic = patch.textItalic
+    if (typeof patch.textUnderline === 'boolean') s.underline = patch.textUnderline
+    if (patch.textAlign) s.align = patch.textAlign
+    Object.assign(state, patch)
+    styleTextEditor(s)
+    window.api.send('app:setDefaults', patch)
+    syncFmt()
+    draw()
+    textEdit.focus()
+    return
+  }
+  applyStyle(patch)
+  syncFmt()
+}
+document.getElementById('btnFormat').addEventListener('mousedown', (e) => e.preventDefault())   // 入力中の文字を確定させない
+document.getElementById('btnFormat').addEventListener('click', () => {
+  if (!fmtPanel.hidden) { fmtPanel.hidden = true; return }
+  const r = document.getElementById('btnFormat').getBoundingClientRect()
+  fmtPanel.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 420)) + 'px'
+  fmtPanel.style.top = (r.bottom + 4) + 'px'
+  syncFmt()
+  fmtPanel.hidden = false
+})
+fmtPanel.addEventListener('mousedown', (e) => { if (e.target !== fmtFaceEl) e.preventDefault() })
+fmtFaceEl.addEventListener('change', () => { setFmt({ textFace: fmtFaceEl.value }); fmtFaceEl.blur() })
+document.getElementById('fmtB').addEventListener('click', () => setFmt({ textBold: !fmtNow().bold }))
+document.getElementById('fmtI').addEventListener('click', () => setFmt({ textItalic: !fmtNow().italic }))
+document.getElementById('fmtU').addEventListener('click', () => setFmt({ textUnderline: !fmtNow().underline }))
+fmtPanel.querySelectorAll('[data-align]').forEach((b) => b.addEventListener('click', () => setFmt({ textAlign: b.dataset.align })))
+
+// ---- 撮り直し・差し替えのメニュー
+const replaceMenu = document.getElementById('replaceMenu')
+let canRetake = false
+function closeMenus(e) {
+  if (!fmtPanel.hidden && !fmtPanel.contains(e.target) && e.target.id !== 'btnFormat') fmtPanel.hidden = true
+  if (!replaceMenu.hidden && !replaceMenu.contains(e.target) && e.target.id !== 'btnRetake') replaceMenu.hidden = true
+}
+window.addEventListener('mousedown', closeMenus, true)
+replaceMenu.querySelectorAll('button[data-how]').forEach((b) => {
+  b.addEventListener('click', () => {
+    replaceMenu.hidden = true
+    commitText()
+    flushLibrary()
+    if (b.dataset.how === 'retake') window.api.send('editor:retake')
+    else window.api.send('editor:replace', b.dataset.how)
+  })
+})
 fontDecoEl.addEventListener('change', () => applyStyle({ deco: fontDecoEl.value }))
 
 const fontHaloEl = document.getElementById('fontHalo')
@@ -2876,7 +3064,7 @@ document.getElementById('btnFinishView').addEventListener('click', () => showFin
 // ---------------------------------------------------------------- 書き方のお気に入り
 
 // 登録できる道具。選択・つかむ・切り抜きは書き方を持たないので入れない（main.js の PRESET_TOOLS と同じ）
-const PRESET_TOOLS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'marker', 'text', 'bubble', 'step', 'blur', 'spot', 'zoom']
+const PRESET_TOOLS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'marker', 'text', 'bubble', 'step', 'blur', 'spot', 'zoom', 'brace']
 const favBtns = Array.from(document.querySelectorAll('.fav'))
 
 // お気に入りの、その道具で意味のある項目だけを取り出す。
@@ -3025,9 +3213,13 @@ document.getElementById('btnLibrary').addEventListener('click', () => {
 })
 // 撮り直しは新しい1枚として開く。書き込みは引き継がないので、この絵のぶんは先に履歴へ流しておく
 document.getElementById('btnRetake').addEventListener('click', () => {
-  commitText()
-  flushLibrary()
-  window.api.send('editor:retake')
+  if (!replaceMenu.hidden) { replaceMenu.hidden = true; return }
+  // 範囲で撮った絵だけ「同じ範囲」が使える
+  replaceMenu.querySelectorAll('[data-how="retake"], [data-how="sameRegion"]').forEach((x) => { x.hidden = !canRetake })
+  const r = document.getElementById('btnRetake').getBoundingClientRect()
+  replaceMenu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 350)) + 'px'
+  replaceMenu.style.top = (r.bottom + 4) + 'px'
+  replaceMenu.hidden = false
 })
 document.getElementById('btnFocus').addEventListener('click', () => toggleFocus())
 // 浮かせるのは見えている絵そのもの（仕上げの余白・影は付けない）。
@@ -3059,9 +3251,12 @@ function reserveOptsWidth() {
   const groups = ['widths', 'markerWidths', 'fonts'].map((id) => document.getElementById(id))
   const keep = groups.map((g) => g.hidden).concat(fontDecoEl.hidden, fontHaloEl.hidden)
   const keepPicks = [lineDashEl.hidden, rectRadiusEl.hidden, zoomKEl.hidden]
+  const fmtBtn = document.getElementById('btnFormat')
+  const keepFmt = fmtBtn.hidden
   opts.style.minWidth = ''
   fontDecoEl.hidden = false
   fontHaloEl.hidden = false
+  fmtBtn.hidden = false
   // 太さの欄でいちばん広くなるのは四角（線の種類＋角の丸み）。倍率はそれより狭いので測らない
   lineDashEl.hidden = false
   rectRadiusEl.hidden = false
@@ -3075,6 +3270,7 @@ function reserveOptsWidth() {
   fontDecoEl.hidden = keep[3]
   fontHaloEl.hidden = keep[4]
   ;[lineDashEl.hidden, rectRadiusEl.hidden, zoomKEl.hidden] = keepPicks
+  fmtBtn.hidden = keepFmt
   opts.style.minWidth = Math.ceil(w) + 'px'
 }
 
@@ -3105,6 +3301,9 @@ function updateUi() {
   fontDecoEl.hidden = !textMode
   // フチの太さは、フチが出る飾りを選んでいるときだけ意味がある
   fontHaloEl.hidden = !textMode || state.deco === 'shadow' || state.deco === 'none'
+  // 書式は文字と吹き出しのとき（番号は丸の中の数字なので書式を持たない）
+  document.getElementById('btnFormat').hidden = !(textMode || kind === 'bubble')
+  if (!fmtPanel.hidden) syncFmt()
   // 文字・吹き出しと連番マーカーは線の太さを使わないので出さない（吹き出しの縁は文字の大きさで決まる）。
   // 蛍光ペンは専用の太さを出す。スポットライトの暗さは固定なので、太さも出さない
   document.getElementById('widths').hidden = kind === 'text' || kind === 'bubble' || kind === 'step' || kind === 'marker' || kind === 'spot'
@@ -3301,7 +3500,7 @@ window.addEventListener('keydown', (e) => {
 
   const tools = {
     v: 'select', h: 'hand', r: 'rect', e: 'ellipse', a: 'arrow', l: 'line', p: 'pen', m: 'marker',
-    t: 'text', u: 'bubble', n: 'step', b: 'blur', s: 'spot', z: 'zoom', c: 'crop', x: 'cut',
+    t: 'text', u: 'bubble', n: 'step', b: 'blur', s: 'spot', z: 'zoom', c: 'crop', x: 'cut', k: 'brace',
   }
   const t = tools[e.key.toLowerCase()]
   if (t) { e.preventDefault(); setTool(t) }
@@ -3353,8 +3552,15 @@ window.api.on('editor:init', (d) => {
   state.focus = !!d.focus
   state.dataUrl = d.dataUrl || ''
   document.body.classList.toggle('focus', state.focus)
-  // 範囲選択で撮った絵だけ撮り直せる（全画面・スクロール撮影・取り込んだ絵は範囲を覚えていない）
-  document.getElementById('btnRetake').hidden = !d.canRetake
+  // 撮り直しは範囲選択で撮った絵だけ（全画面・スクロール撮影・取り込んだ絵は範囲を覚えていない）。
+  // 差し替えは履歴にある絵ならどれでもできるので、ボタンは履歴の絵なら出す
+  canRetake = !!d.canRetake
+  document.getElementById('btnRetake').hidden = !d.libraryId || !!d.background || !!d.exportOnly
+  if (TEXT_FACES[d.textFace]) state.textFace = d.textFace
+  if (typeof d.textBold === 'boolean') state.textBold = d.textBold
+  if (typeof d.textItalic === 'boolean') state.textItalic = d.textItalic
+  if (typeof d.textUnderline === 'boolean') state.textUnderline = d.textUnderline
+  if (TEXT_ALIGNS.includes(d.textAlign)) state.textAlign = d.textAlign
 
   // 集中モードの出入りで窓を作り直したときは、履歴より新しい「画面側の今の状態」で上書きする
   const carry = d.carry || null
@@ -3401,7 +3607,7 @@ window.api.on('editor:init', (d) => {
     // 履歴パネルの Ctrl+C 用の見えない窓。Ctrl+C と同じ exportPNG() で書き出して返すだけ（窓は本体が捨てる）
     // 画角の左上（元の絵の座標）も返す。浮かせるとき、撮った位置にぴったり重ねるのに使う
     if (d.exportOnly) {
-      document.fonts.ready.then(() => {
+      Promise.all([document.fonts.ready, imagesReady()]).then(() => {
         const v = view()
         window.api.send('editor:exported', { dataUrl: exportPNG(), x: v.x / state.scale, y: curToOrig(cutNow(), v.y, false) })
       })
@@ -3414,6 +3620,7 @@ window.api.on('editor:init', (d) => {
     draw()
     if (d.addShapes) addShapesFromMain(d.addShapes)
     if (carry && carry.privNotice) showPrivNotice(carry.privNotice)
+    if (d.replaced) toast('下の絵を差し替えました（書き込みはそのまま。前の絵は保存先に残っています）')
     afterOpen(d, carry)
     // プルダウンの幅は字の形が読み込まれてから決まるので、そろったら測り直す
     document.fonts.ready.then(() => { reserveOptsWidth(); layout(); draw() })
@@ -3426,6 +3633,7 @@ window.api.on('editor:init', (d) => {
 // background は、撮った直後に編集画面を出さない設定のときの見えない窓。済んだら履歴へ書いて本体に知らせる
 async function afterOpen(d, carry) {
   try {
+    await imagesReady()
     let blurred = 0
     if (d.autoBlur || (carry && carry.findPrivate)) blurred = await findPrivate(false)
     if (!carry && (d.copyMode === 'image' || d.copyMode === 'imagePath')) await copyAfterCapture(d.copyMode, !!d.background)
@@ -3459,6 +3667,7 @@ window.api.on('editor:ui', (on) => {
 })
 
 window.api.on('editor:requestClose', requestClose)
+window.api.on('editor:toast', (msg) => toast(String(msg || '')))
 
 // 本体が見つけた「違い」の四角を足す（履歴の「違いに赤枠を付ける」）。
 // 1回の変更として積むので Ctrl+Z でまとめて消せ、commitChange が履歴とサムネイルにも書き戻す。

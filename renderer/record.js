@@ -65,6 +65,12 @@ let outH = 0
 let gifW = 0
 let gifH = 0
 let hasAudio = false
+let paused = false
+let blurBoxes = []     // 録画中の自動ぼかし。録る範囲の実ピクセルの四角（本体が読み取るたびに届く）
+const pcv = document.createElement('canvas')
+let pausedAt = 0       // 一時停止した時刻
+let pausedTotal = 0    // 止めていた時間の合計（経過時間と長さから引く）
+const btnPause = document.getElementById('btnPause')
 
 // ---------------------------------------------------------------- 表示
 
@@ -88,10 +94,47 @@ function fail(text, detail) {
 
 window.api.on('record:init', (d) => {
   cfg = d
+  blurBoxes = Array.isArray(d.blurBoxes) ? d.blurBoxes : []
   start().catch((err) => fail('録画を始められませんでした', String(err && err.message ? err.message : err)))
 })
 
 window.api.on('record:stop', () => { if (phase === 'rec') stop() })
+window.api.on('record:pause', () => togglePause())
+window.api.on('record:blur', (boxes) => { blurBoxes = Array.isArray(boxes) ? boxes : [] })
+
+// 一時停止。録画機を止め、絵の描き直しと GIF のコマ足しも止める（止めている間の絵は動画にも GIF にも入らない）
+function togglePause() {
+  if (phase !== 'rec' || !recorder) return
+  const now = performance.now()
+  if (!paused) {
+    paused = true
+    pausedAt = now
+    try { recorder.pause() } catch (_) {}
+    clearInterval(drawTimer); clearInterval(gifTimer)
+    dotEl.classList.add('off')
+    noteEl.textContent = '一時停止中'
+    btnPause.textContent = '再開'
+  } else {
+    paused = false
+    pausedTotal += now - pausedAt
+    // 再開した瞬間のコマが、止めていた時間ぶん長く表示されないようにする
+    lastGifAt = now
+    draw()
+    try { recorder.resume() } catch (_) {}
+    drawTimer = setInterval(draw, Math.max(16, Math.round(1000 / cfg.fps)))
+    gifTimer = setInterval(addGifFrame, Math.max(40, Math.round(1000 / cfg.gifFps)))
+    dotEl.classList.remove('off')
+    noteEl.textContent = hasAudio ? '録画中（音あり）' : '録画中（音なし）'
+    btnPause.textContent = '一時停止'
+  }
+  window.api.send('record:state', { recording: true, paused })
+}
+
+// 止めていた時間を除いた、録れている長さ
+function elapsed() {
+  const now = paused ? pausedAt : performance.now()
+  return now - startAt - pausedTotal
+}
 
 async function start() {
   // 音は「パソコンで鳴っている音」。取り込めない環境もあるので、駄目なら映像だけで続ける
@@ -155,7 +198,7 @@ async function start() {
   startAt = performance.now()
   lastGifAt = startAt
   phase = 'rec'
-  noteEl.textContent = hasAudio ? '録画中（音あり）' : '録画中（音なし）'
+  noteEl.textContent = (hasAudio ? '録画中（音あり）' : '録画中（音なし）') + (cfg.autoBlur ? '・自動ぼかし' : '')
   drawTimer = setInterval(draw, Math.max(16, Math.round(1000 / cfg.fps)))
   gifTimer = setInterval(addGifFrame, Math.max(40, Math.round(1000 / cfg.gifFps)))
   tickTimer = setInterval(tick, 200)
@@ -164,6 +207,30 @@ async function start() {
 function draw() {
   if (srcEl.readyState < 2) return
   ctx.drawImage(srcEl, srcRect.x, srcRect.y, srcRect.w, srcRect.h, 0, 0, outW, outH)
+  if (blurBoxes.length) pixelate()
+}
+
+// 届いている四角に、少し広げてモザイクをかける（読み取りの間に少しずれても隠れるように）。
+// 動画も GIF もこの canvas から作るので、両方にかかる
+function pixelate() {
+  const k = outW / cfg.crop.width
+  ctx.imageSmoothingEnabled = false
+  for (const b of blurBoxes) {
+    const m = Math.max(4, b.h * 0.3) * k
+    const x = Math.max(0, Math.floor(b.x * k - m))
+    const y = Math.max(0, Math.floor(b.y * k - m))
+    const w = Math.min(outW - x, Math.ceil(b.w * k + m * 2))
+    const h = Math.min(outH - y, Math.ceil(b.h * k + m * 2))
+    if (w < 2 || h < 2) continue
+    const block = Math.max(8, Math.round(h / 2.5))
+    pcv.width = Math.max(1, Math.round(w / block))
+    pcv.height = Math.max(1, Math.round(h / block))
+    const p = pcv.getContext('2d')
+    p.imageSmoothingEnabled = true
+    p.drawImage(cv, x, y, w, h, 0, 0, pcv.width, pcv.height)
+    ctx.drawImage(pcv, 0, 0, pcv.width, pcv.height, x, y, w, h)
+  }
+  ctx.imageSmoothingEnabled = true
 }
 
 function addGifFrame() {
@@ -181,7 +248,7 @@ function addGifFrame() {
 }
 
 function tick() {
-  const ms = performance.now() - startAt
+  const ms = elapsed()
   timeEl.textContent = mmss(ms)
   if (ms >= cfg.maxSec * 1000) {
     noteEl.textContent = '上限に達したので止めます'
@@ -191,8 +258,9 @@ function tick() {
 
 async function stop() {
   if (phase !== 'rec') return
+  durationMs = elapsed()
+  if (paused) { paused = false; try { recorder.resume() } catch (_) {} }
   phase = 'done'
-  durationMs = performance.now() - startAt
   clearInterval(drawTimer); clearInterval(gifTimer); clearInterval(tickTimer)
   dotEl.classList.add('off')
   noteEl.textContent = 'まとめています…'
@@ -275,6 +343,7 @@ async function save(kind) {
 }
 
 document.getElementById('btnStop').addEventListener('click', () => stop())
+btnPause.addEventListener('click', () => togglePause())
 document.getElementById('btnCancel').addEventListener('click', () => window.api.send('record:cancel'))
 document.getElementById('btnVideo').addEventListener('click', () => save('video'))
 document.getElementById('btnGif').addEventListener('click', () => save('gif'))

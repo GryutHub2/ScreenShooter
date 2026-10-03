@@ -6,6 +6,13 @@ const fieldRepeat = document.getElementById('keyRepeat')
 const fieldScroll = document.getElementById('keyScroll')
 const fieldRecord = document.getElementById('keyRecord')
 const fieldDelay = document.getElementById('keyDelay')
+const fieldOcr = document.getElementById('keyOcr')
+const fieldColor = document.getElementById('keyColor')
+const captureCursorEl = document.getElementById('captureCursor')
+const recCountdownEl = document.getElementById('recCountdown')
+const claudeTranslateEl = document.getElementById('claudeTranslate')
+const recAutoBlurEl = document.getElementById('recAutoBlur')
+const embedEditsEl = document.getElementById('embedEdits')
 const delaySecondsEl = document.getElementById('delaySeconds')
 const afterCaptureEl = document.getElementById('afterCapture')
 const captureClipboardEl = document.getElementById('captureClipboard')
@@ -32,6 +39,8 @@ const statusEl = document.getElementById('status')
 
 const current = {
   hotkeyRegion: '', hotkeyFull: '', hotkeyScroll: '', hotkeyRecord: '', hotkeyRepeat: '', hotkeyDelay: '', saveDir: '',
+  hotkeyOcr: '', hotkeyColor: '', captureCursor: false, recordCountdown: 0, claudeTranslate: false,
+  recordAutoBlur: true, embedEdits: true,
   delaySeconds: 5, afterCapture: 'editor', captureClipboard: 'image', exportFinish: 'none', libraryOrder: 'old',
   autoStart: false,
   sendToMenu: false,
@@ -48,6 +57,8 @@ const FIELDS = {
   scroll: { el: fieldScroll, prop: 'hotkeyScroll' },
   record: { el: fieldRecord, prop: 'hotkeyRecord' },
   delay: { el: fieldDelay, prop: 'hotkeyDelay' },
+  ocr: { el: fieldOcr, prop: 'hotkeyOcr' },
+  color: { el: fieldColor, prop: 'hotkeyColor' },
 }
 // 自動起動は、開いたときの状態から切り替えたときだけ本体に頼む（保存のたびにショートカットを作り直さない）
 let autoStartLoaded = false
@@ -122,6 +133,11 @@ function render() {
   exportFinishEl.value = current.exportFinish
   libOrderEl.value = current.libraryOrder
   autoStartEl.checked = !!current.autoStart
+  captureCursorEl.checked = !!current.captureCursor
+  recCountdownEl.value = String(current.recordCountdown)
+  claudeTranslateEl.checked = !!current.claudeTranslate
+  recAutoBlurEl.checked = !!current.recordAutoBlur
+  embedEditsEl.checked = !!current.embedEdits
   showBadPatterns()
   // 打っている途中の空行や前後の空白を消さないよう、中身が同じなら書き戻さない
   if (wordsOf(autoBlurWordsEl.value).join('\n') !== current.autoBlurWords.join('\n')) {
@@ -161,7 +177,7 @@ function stopListen() {
   render()
 }
 
-const CLEAR_BUTTONS = { region: 'clearRegion', repeat: 'clearRepeat', full: 'clearFull', scroll: 'clearScroll', record: 'clearRecord', delay: 'clearDelay' }
+const CLEAR_BUTTONS = { region: 'clearRegion', repeat: 'clearRepeat', full: 'clearFull', scroll: 'clearScroll', record: 'clearRecord', delay: 'clearDelay', ocr: 'clearOcr', color: 'clearColor' }
 for (const name of Object.keys(FIELDS)) {
   FIELDS[name].el.addEventListener('click', () => startListen(name))
   document.getElementById(CLEAR_BUTTONS[name]).addEventListener('click', () => {
@@ -224,6 +240,11 @@ document.getElementById('btnSave').addEventListener('click', async () => {
   current.exportFinish = exportFinishEl.value
   current.libraryOrder = libOrderEl.value
   current.autoStart = autoStartEl.checked
+  current.captureCursor = captureCursorEl.checked
+  current.recordCountdown = Number(recCountdownEl.value) || 0
+  current.claudeTranslate = claudeTranslateEl.checked
+  current.recordAutoBlur = recAutoBlurEl.checked
+  current.embedEdits = embedEditsEl.checked
   const r = await window.api.invoke('settings:save', Object.assign({}, current, { autoStartChanged: current.autoStart !== autoStartLoaded }))
   if (r && typeof r.autoStartNow === 'boolean') {
     autoStartLoaded = r.autoStartNow
@@ -271,6 +292,11 @@ const LIVE = [
   [exportFinishEl, 'exportFinish', (el) => el.value],
   [libOrderEl, 'libraryOrder', (el) => el.value],
   [autoStartEl, 'autoStart', (el) => el.checked],
+  [captureCursorEl, 'captureCursor', (el) => el.checked],
+  [recCountdownEl, 'recordCountdown', (el) => Number(el.value) || 0],
+  [claudeTranslateEl, 'claudeTranslate', (el) => el.checked],
+  [recAutoBlurEl, 'recordAutoBlur', (el) => el.checked],
+  [embedEditsEl, 'embedEdits', (el) => el.checked],
 ]
 for (const item of LIVE) {
   item[0].addEventListener('change', () => { current[item[1]] = item[2](item[0]) })
@@ -297,6 +323,13 @@ window.api.invoke('settings:get').then((s) => {
   current.hotkeyRecord = s.hotkeyRecord || ''
   current.hotkeyRepeat = s.hotkeyRepeat || ''
   current.hotkeyDelay = s.hotkeyDelay || ''
+  current.hotkeyOcr = s.hotkeyOcr || ''
+  current.hotkeyColor = s.hotkeyColor || ''
+  current.captureCursor = !!s.captureCursor
+  current.recordCountdown = [0, 3, 5].includes(Number(s.recordCountdown)) ? Number(s.recordCountdown) : 0
+  current.claudeTranslate = !!s.claudeTranslate
+  current.recordAutoBlur = s.recordAutoBlur !== false
+  current.embedEdits = s.embedEdits !== false
   current.delaySeconds = Number(s.delaySeconds) || 5
   current.afterCapture = s.afterCapture === 'library' ? 'library' : 'editor'
   current.captureClipboard = ['off', 'image', 'imagePath', 'path'].includes(s.captureClipboard) ? s.captureClipboard : 'image'

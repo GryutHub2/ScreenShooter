@@ -15,6 +15,9 @@ const { rowHashes, findShift, compose, sameRatio } = require('./lib/stitch')
 const { findDiffBoxes } = require('./lib/diff')
 const { findPrivateBoxes, LEVELS: BLUR_LEVELS } = require('./lib/pii')
 const { migrateFromOldName, OLD_NAME } = require('./lib/migrate')
+const { ocrToText } = require('./lib/ocrtext')
+const pngmeta = require('./lib/pngmeta')
+const claude = require('./lib/claude')
 
 const ROOT = __dirname
 const ASSETS = path.join(ROOT, 'assets')
@@ -32,6 +35,13 @@ function defaultSettings() {
     hotkeyRepeat: '',               // 前回と同じ範囲で撮る（空 = 割り当てなし。他アプリとの衝突を避けるため既定は空）
     hotkeyDelay: '',                // 時間差で撮る（delaySeconds 秒後に範囲選択。空 = 割り当てなし）
     delaySeconds: 5,                // 時間差で撮るまでの秒数（キーと、トレイの「◯秒後（設定の秒数）」で使う）
+    hotkeyOcr: '',                  // 範囲の文字を読み取ってコピー（空 = 割り当てなし）
+    hotkeyColor: '',                // 画面の色を拾ってコピー（空 = 割り当てなし）
+    captureCursor: false,           // マウスカーソルも写す（撮った絵の上に、動かせる・消せる画像として置く）
+    claudeTranslate: false,         // 読み取った文字を Claude で翻訳するボタンを出す（文字を外へ送るので既定はオフ）
+    recordCountdown: 0,             // 録画を始める前のカウントダウン（秒。0 = すぐ始める）
+    recordAutoBlur: true,           // 録画中も2〜3秒ごとに画面の文字を読み、個人情報らしい所にモザイクをかけたまま録る
+    embedEdits: true,               // 書き込み版（_書き込み.png）に「元の絵＋図形」を入れる（ScreenShooter に落とすと図形を動かせる）
     lastRegion: null,               // 前回、範囲選択で撮った場所（rememberRegion が書く）
     // 撮った直後
     afterCapture: 'editor',         // 'editor' = 編集画面を開く / 'library' = 開かずに履歴パネルを出す
@@ -252,6 +262,13 @@ function importImage(src) {
   const found = lib().list().find((m) => samePath(m.source, src) || samePath(m.file, src))
   if (found && originalPath(found)) return found
 
+  // 書き込み版（編集の情報入り）なら、元の絵と図形に戻して取り込む。
+  // 保存先の中にある自分の書き込み版は対象にしない（元の絵がもう保存先にあり、同じ絵が2つになるため）
+  if (ext === '.png' && !samePath(path.dirname(src), settings.saveDir)) {
+    const withEdits = importWithEdits(src)
+    if (withEdits) return withEdits
+  }
+
   // 保存先フォルダの中にある絵は、コピーを作らずそのまま指す（同じ絵を2個に増やさないため）
   let file = src
   if (!samePath(path.dirname(src), settings.saveDir)) {
@@ -406,8 +423,22 @@ function thumbUrl(id) {
   return url.pathToFileURL(p).href + '?t=' + Math.round(stamp)
 }
 
+// 履歴パネルの絞り込みの言葉（パネルの検索欄から届く）。空なら全部
+let libraryQuery = ''
+
+// 絞り込み。ファイル名・タイトル・タグ・撮った日（2026-10-03 / 10/03）のどこかに、空白で区切った言葉が全部入っているもの
+function matchesQuery(m, q) {
+  if (!q) return true
+  const d = new Date(m.createdAt || 0)
+  const p = (n) => String(n).padStart(2, '0')
+  const hay = [displayName(m), m.title || '', (m.tags || []).join(' '),
+    d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()), (d.getMonth() + 1) + '/' + d.getDate(),
+    m.kind === 'video' ? '録画 動画 gif' : ''].join(' ').toLowerCase()
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w))
+}
+
 function libraryItems(limit) {
-  return lib().list().slice(0, limit || 80).map((m) => ({
+  return lib().list().filter((m) => matchesQuery(m, libraryQuery)).slice(0, limit || 80).map((m) => ({
     id: m.id,
     createdAt: m.createdAt,
     width: m.width,
@@ -418,8 +449,91 @@ function libraryItems(limit) {
     thumb: thumbUrl(m.id),
     kind: m.kind || 'image',
     durationMs: m.durationMs || 0,
+    title: m.title || '',
+    tags: Array.isArray(m.tags) ? m.tags : [],
   }))
 }
+
+// ---- 名前を変える・タイトルとタグ（履歴パネルの右クリック・F2）
+// 名前は保存先のファイルそのものを変える。書き込み版（_書き込み.png）と、録画の動画と GIF も同じ名前にそろえる。
+// 拡張子は変えない（形式を変えると、履歴が覚えている絵の種類と食い違うため）
+function cleanFileBase(s) {
+  return String(s || '').replace(/[\\/:*?"<>|\r\n\t]/g, '').replace(/\.+$/, '').trim().slice(0, 120)
+}
+
+function renameEntry(id, newBase) {
+  const meta = readEntry(id)
+  if (!meta) return { ok: false, error: '履歴が見つかりません' }
+  const base = cleanFileBase(newBase)
+  if (!base) return { ok: false, error: '名前を入れてください（\\ / : * ? " < > | は使えません）' }
+  const main = meta.kind === 'video' ? (meta.videoFile || meta.gifFile) : meta.file
+  if (!main || !fs.existsSync(main)) return { ok: false, error: '保存先にファイルが見つかりません' }
+  const oldBase = path.basename(main, path.extname(main))
+  if (base === oldBase) return { ok: true }
+  // 動かすものの一覧（元 → 先）。ひとつでも先に同じ名前があれば、何も動かさずにやめる
+  const moves = []
+  const plan = (key, suffix) => {
+    const p = meta[key]
+    if (!p || !fs.existsSync(p)) return
+    const dir = path.dirname(p)
+    const ext = path.extname(p)
+    const name = path.basename(p, ext)
+    const tail = name.startsWith(oldBase) ? name.slice(oldBase.length) : (suffix || '')
+    moves.push({ key, from: p, to: path.join(dir, base + tail + ext) })
+  }
+  if (meta.kind === 'video') { plan('videoFile'); plan('gifFile') } else { plan('file'); plan('editedPath', '_書き込み') }
+  for (const mv of moves) {
+    if (!samePath(mv.from, mv.to) && fs.existsSync(mv.to)) return { ok: false, error: '同じ名前のファイルがもうあります：' + path.basename(mv.to) }
+  }
+  try {
+    for (const mv of moves) { fs.renameSync(mv.from, mv.to); meta[mv.key] = mv.to }
+  } catch (err) {
+    writeMeta(meta)   // 途中まで動いた分は、動いた先を覚えておく
+    return { ok: false, error: String(err) }
+  }
+  writeMeta(meta)
+  refreshEditorTitle(meta.id)
+  notifyLibraryChanged()
+  return { ok: true }
+}
+
+ipcMain.handle('library:rename', (e, d) => (d && typeof d.id === 'string' ? renameEntry(d.id, d.name) : { ok: false }))
+
+ipcMain.handle('library:saveInfo', (e, d) => {
+  const meta = d && typeof d.id === 'string' ? readEntry(d.id) : null
+  if (!meta) return { ok: false }
+  const title = String(d.title || '').trim().slice(0, 200)
+  const tags = []
+  for (const t of String(d.tags || '').split(/[,、，\s]+/)) {
+    const v = t.trim().slice(0, 40)
+    if (v && !tags.includes(v)) tags.push(v)
+  }
+  if (title) meta.title = title; else delete meta.title
+  if (tags.length) meta.tags = tags.slice(0, 30); else delete meta.tags
+  writeMeta(meta)
+  notifyLibraryChanged()
+  return { ok: true }
+})
+
+ipcMain.on('library:query', (e, q) => {
+  libraryQuery = String(q || '').trim().slice(0, 200)
+  notifyLibraryChanged()
+})
+
+// 右クリック・F2 から、パネルの中に入力欄を出させる
+function askLibraryInfo(id, what) {
+  const meta = readEntry(id)
+  if (!meta || !libraryWin || libraryWin.isDestroyed()) return
+  const main = meta.kind === 'video' ? (meta.videoFile || meta.gifFile) : meta.file
+  libraryWin.webContents.send('library:editInfo', {
+    id, what,
+    name: main ? path.basename(main, path.extname(main)) : '',
+    ext: main ? path.extname(main) : '',
+    title: meta.title || '',
+    tags: (meta.tags || []).join('、'),
+  })
+}
+ipcMain.on('library:askInfo', (e, d) => { if (d && typeof d.id === 'string') askLibraryInfo(d.id, d.what === 'rename' ? 'rename' : 'info') })
 
 // ---------------------------------------------------------------- 画面の取り込み
 
@@ -686,11 +800,20 @@ function pointInBounds(p, b) {
   return p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height
 }
 
-async function startRegionCapture(mode) {
+// 範囲選択の使い方。region = ふつうに撮る / scroll = 長いページ / record = 録画 / ocr = 文字を読み取る /
+// color = 色を拾う（点を押すだけ）/ replace = 編集画面の「下の絵を差し替え」用に撮る
+const CAPTURE_MODES = ['region', 'scroll', 'record', 'ocr', 'color', 'replace']
+let replaceWin = null      // 差し替え用に撮るときの編集画面（撮るあいだは隠している）
+let cursorPending = null   // 撮り始めた瞬間のカーソル（{ point, displayId, image: Promise }）
+
+async function startRegionCapture(mode, opts) {
   if (capturing || scrollBusy) return
   if (mode === 'record' && recording) return
   capturing = true
-  captureMode = (mode === 'scroll' || mode === 'record') ? mode : 'region'
+  captureMode = CAPTURE_MODES.includes(mode) ? mode : 'region'
+  replaceWin = (opts && opts.win) || null
+  // カーソルは撮り始めた瞬間の位置と形を覚える（選んでいるあいだに動くため）。M キーで写す・写さないを切り替えられるよう、ふつうに撮るときは毎回取っておく
+  cursorPending = (captureMode === 'region' || captureMode === 'replace') ? startCursorShot() : null
   overlayRects = null
 
   // 画面の取り込みと同時に走らせる（待たない）。間に合ったら吸い付きが有効になる
@@ -751,6 +874,7 @@ async function startRegionCapture(mode) {
           dataUrl: shot.image.toDataURL(),
           isCursorHere: pointInBounds(cursor, b),
           mode: captureMode,
+          cursorOn: !!settings.captureCursor,
         })
       },
     })
@@ -771,7 +895,20 @@ ipcMain.on('overlay:ready', (e, data) => {
   pushRectsTo(win)   // 先にウィンドウ位置が届いていた場合はここで渡す
 })
 
-ipcMain.on('overlay:cancel', () => closeOverlays())
+ipcMain.on('overlay:cancel', () => {
+  closeOverlays()
+  // 差し替えをやめたときは、隠しておいた編集画面を戻す
+  if (replaceWin && !replaceWin.isDestroyed()) replaceWin.show()
+  replaceWin = null
+})
+
+// 色を拾った。押した点の色をクリップボードへ入れ、トレイのお知らせで値を見せる
+ipcMain.on('overlay:color', (e, d) => {
+  closeOverlays()
+  if (!d || typeof d.hex !== 'string') return
+  clipboard.writeText(String(d.text || d.hex))
+  if (tray) tray.displayBalloon({ title: '色をコピーしました', content: d.hex + '（RGB ' + d.rgb + '）', iconType: 'info' })
+})
 
 ipcMain.on('overlay:select', (e, data) => {
   const shot = overlayShots.find((s) => s.display.id === data.displayId)
@@ -809,12 +946,31 @@ ipcMain.on('overlay:select', (e, data) => {
       return
     }
     rememberRegion(region)
-    startRecording(shot.display, { x, y, width: w, height: h })
+    // 選んだ時点の絵は、録画の自動ぼかしの1回目の読み取りに使う（録り始めからぼかしが効くように）
+    startRecording(shot.display, { x, y, width: w, height: h }, shot.image.crop({ x, y, width: w, height: h }))
+    return
+  }
+
+  if (captureMode === 'ocr') {
+    runOcr(shot.image.crop({ x, y, width: w, height: h }))
+    return
+  }
+
+  if (captureMode === 'replace') {
+    const win = replaceWin
+    replaceWin = null
+    replaceBaseImage(win, shot.image.crop({ x, y, width: w, height: h }), region)
     return
   }
 
   rememberRegion(region)
-  captureDone(shot.image.crop({ x, y, width: w, height: h }), region)
+  const pending = cursorPending
+  cursorPending = null
+  const image = shot.image.crop({ x, y, width: w, height: h })
+  // 範囲選択の画面で M キーを押すと、写す・写さないが設定と逆になる（data.cursor）
+  const want = typeof data.cursor === 'boolean' ? data.cursor : !!settings.captureCursor
+  cursorShapeFor(want ? pending : null, shot, x, y, w, h)
+    .then((shape) => captureDone(image, region, shape ? { shapes: [shape] } : undefined))
 })
 
 // ---------------------------------------------------------------- 前回と同じ範囲で撮る
@@ -872,10 +1028,11 @@ function rectsOverlap(a, b) {
 
 // 暗幕を出さずに、その範囲をすぐ撮る。ふつうの撮影と同じく保存先・履歴・編集画面へ流す。
 // 合わないときの範囲選択も await で待つ（呼び出し側が隠した窓を戻すのは、取り込みが済んでから）
-async function captureRegion(region, opts) {
-  if (capturing || scrollBusy) return
+// 前と同じ範囲を撮るだけ（開かない）。画面の構成が変わって同じ範囲が使えないときは null
+async function grabRegionShot(region) {
+  if (capturing || scrollBusy) return null
   const display = regionDisplay(region)
-  if (!display) { await startRegionCapture('region'); return }
+  if (!display) return null
   capturing = true
   let shots
   try {
@@ -883,18 +1040,29 @@ async function captureRegion(region, opts) {
   } catch (err) {
     capturing = false
     showError('画面の取り込みに失敗しました', String(err))
-    return
+    return null
   }
   capturing = false
   const shot = shots.find((s) => s.display.id === display.id)
   const size = shot ? shot.image.getSize() : null
-  if (!size || size.width !== region.imageW || size.height !== region.imageH) {
-    await startRegionCapture('region')
-    return
-  }
+  if (!size || size.width !== region.imageW || size.height !== region.imageH) return null
+  return { shot, image: shot.image.crop({ x: region.x, y: region.y, width: region.w, height: region.h }) }
+}
+
+async function grabRegionImage(region) {
+  const g = await grabRegionShot(region)
+  return g ? g.image : null
+}
+
+async function captureRegion(region, opts) {
+  if (capturing || scrollBusy) return
+  const pending = settings.captureCursor ? startCursorShot() : null
+  const g = await grabRegionShot(region)
+  if (!g) { await startRegionCapture('region'); return }
   const r = Object.assign({}, region)
   rememberRegion(r)
-  captureDone(shot.image.crop({ x: r.x, y: r.y, width: r.w, height: r.h }), r, opts)
+  const shape = await cursorShapeFor(pending, g.shot, r.x, r.y, r.w, r.h)
+  captureDone(g.image, r, Object.assign({}, opts || {}, shape ? { shapes: [shape] } : {}))
 }
 
 function captureLastRegion() {
@@ -948,6 +1116,7 @@ ipcMain.on('editor:retake', async (e) => {
 
 async function captureFullScreen() {
   if (capturing) return
+  const pending = settings.captureCursor ? startCursorShot() : null
   const target = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
   let shots
   try {
@@ -957,7 +1126,10 @@ async function captureFullScreen() {
     return
   }
   const shot = shots.find((s) => s.display.id === target.id) || shots[0]
-  if (shot) captureDone(shot.image)
+  if (!shot) return
+  const size = shot.image.getSize()
+  const shape = await cursorShapeFor(pending, shot, 0, 0, size.width, size.height)
+  captureDone(shot.image, undefined, shape ? { shapes: [shape] } : undefined)
 }
 
 // ---------------------------------------------------------------- スクロール撮影
@@ -1409,6 +1581,11 @@ function delaySeconds() {
 // opts.editor は「同じ範囲で撮り直す」から来たとき。編集画面から押したので、設定にかかわらず編集画面で開く
 function captureDone(image, region, opts) {
   const meta = addToLibrary(image, region)
+  // 撮った時点で置く図形（写したカーソル）。ふつうの図形なので、編集画面で動かす・消すができる
+  if (meta && opts && Array.isArray(opts.shapes) && opts.shapes.length) {
+    meta.shapes = opts.shapes
+    writeMeta(meta)
+  }
   const clip = CAPTURE_CLIPBOARDS.includes(settings.captureClipboard) ? settings.captureClipboard : 'image'
   const autoBlur = settings.autoBlur !== false
   // ファイルの場所だけなら絵を作る必要がないので、ここで入れてしまう
@@ -1422,6 +1599,171 @@ function captureDone(image, region, opts) {
   }
   notifyLibraryChanged()
 }
+
+// ---------------------------------------------------------------- マウスカーソルを写す
+//
+// desktopCapturer の絵にはカーソルが写らないので、撮り始めた瞬間のカーソルの形を tools\cursor.ps1 に聞き、
+// 撮った絵の上に「画像」の図形として置く（焼き込まないので、編集画面で動かす・消すができる）。
+// 位置は Electron の DIP のカーソル位置を、範囲選択と同じ「絵の大きさ ÷ 画面の幅」の実測比で絵の px に直す
+const CURSOR_WAIT_MS = 5000
+
+function readCursorImage() {
+  return new Promise((resolve) => {
+    const script = path.join(ROOT, 'tools', 'cursor.ps1')
+    try {
+      execFile(powershellPath(), ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script],
+        { timeout: CURSOR_WAIT_MS, windowsHide: true, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' },
+        (err, stdout) => {
+          if (err) { resolve(null); return }
+          try {
+            const d = JSON.parse(String(stdout).trim())
+            resolve(d && d.png ? d : null)
+          } catch (_) { resolve(null) }
+        })
+    } catch (_) { resolve(null) }
+  })
+}
+
+function startCursorShot() {
+  const point = screen.getCursorScreenPoint()
+  return { point, displayId: screen.getDisplayNearestPoint(point).id, image: readCursorImage() }
+}
+
+// 撮った範囲（絵の px で x, y, w, h）に掛かっていれば、カーソルの図形を返す
+async function cursorShapeFor(pending, shot, x, y, w, h) {
+  if (!pending || !shot || pending.displayId !== shot.display.id) return null
+  const cur = await pending.image
+  if (!cur) return null
+  const size = shot.image.getSize()
+  const b = shot.display.bounds
+  const px = (pending.point.x - b.x) * (size.width / b.width) - x - (cur.hx || 0)
+  const py = (pending.point.y - b.y) * (size.height / b.height) - y - (cur.hy || 0)
+  if (px + cur.w <= 0 || py + cur.h <= 0 || px >= w || py >= h) return null
+  return {
+    id: 1, type: 'image', color: '#000000', width: 0, fontSize: 28, cursor: true,
+    src: 'data:image/png;base64,' + cur.png,
+    x1: Math.round(px), y1: Math.round(py), x2: Math.round(px) + cur.w, y2: Math.round(py) + cur.h,
+  }
+}
+
+// ---------------------------------------------------------------- 文字を読み取ってコピー
+//
+// 選んだ範囲を一時ファイルにして tools\ocr.ps1（Windows の文字読み取り。このパソコンの中だけで完結）で読み、
+// 行の順に並べ直した文章を小さな窓に出す。直してからコピーできる。一時ファイルは読み終えたら消す
+function runOcr(image) {
+  const tmp = path.join(os.tmpdir(), 'screenshooter-ocr-' + process.pid + '-' + Date.now() + '.png')
+  const textP = (async () => {
+    try { fs.writeFileSync(tmp, image.toPNG()) } catch (_) { return { text: '', empty: true } }
+    const ocr = await readTextPositions(tmp)
+    try { fs.rmSync(tmp, { force: true }) } catch (_) {}
+    const text = ocr ? ocrToText(ocr) : ''
+    return { text, empty: !text, translate: !!settings.claudeTranslate }
+  })()
+  const win = new BrowserWindow({
+    width: 700, height: 480, minWidth: 420, minHeight: 260, show: false,
+    backgroundColor: '#23262b', title: 'ScreenShooter — 読み取った文字', icon: path.join(ASSETS, 'app.ico'),
+    webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false },
+  })
+  win.setMenu(null)
+  loadGuarded(win, path.join(RENDERER, 'ocr.html'), '読み取った文字', {
+    onReady: async () => {
+      const d = await textP
+      if (!win.isDestroyed()) win.webContents.send('ocr:init', d)
+    },
+  })
+  win.once('ready-to-show', () => { win.show(); win.focus() })
+}
+
+// 翻訳は設定でオンにしたときだけ（文字を外へ送るため）。送るのは文字だけ
+ipcMain.handle('ocr:translate', async (e, d) => {
+  if (!settings.claudeTranslate) return { ok: false, error: '設定の「AI（Claude）」がオフです' }
+  const text = String((d && d.text) || '').slice(0, 20000)
+  if (!text.trim()) return { ok: false, error: '翻訳する文字がありません' }
+  return claude.translate(text, d && d.to === '英語' ? '英語' : '日本語')
+})
+
+ipcMain.on('ocr:copy', (e, text) => {
+  clipboard.writeText(String(text || ''))
+  const win = BrowserWindow.fromWebContents(e.sender)
+  if (win && !win.isDestroyed()) win.close()
+})
+
+// ---------------------------------------------------------------- 下の絵を差し替える
+//
+// 書き込み（図形）はそのままに、下の絵だけを別の絵にする（画面が直ったあと、同じ説明を付け直さずに済むように）。
+// 新しい絵は撮ったものと同じく保存先へ新しいファイルとして書き、履歴が指す元の絵をそれに付け替える。
+// 前の絵のファイルは消さない（保存先に残るので、戻したいときはそれを開けばよい）。
+// 大きさが違う絵にしたときは、切り抜き・省略は合わなくなるので外す（図形と大きさ・余白は残す）
+function replaceBaseImage(win, image, region) {
+  if (!win || win.isDestroyed() || !image || image.isEmpty()) return
+  const meta = win.libraryId ? readEntry(win.libraryId) : null
+  if (!meta) { win.show(); return }
+  let file
+  try {
+    fs.mkdirSync(settings.saveDir, { recursive: true })
+    file = uniquePath(settings.saveDir, timestampFrom(Date.now()), '.png')
+    fs.writeFileSync(file, image.toPNG())
+  } catch (err) {
+    win.show()
+    showError('差し替える絵を保存できませんでした', String(err))
+    return
+  }
+  const size = image.getSize()
+  if (size.width !== meta.width || size.height !== meta.height) {
+    meta.crop = null
+    delete meta.cuts
+  }
+  meta.previousFiles = (Array.isArray(meta.previousFiles) ? meta.previousFiles : []).concat(meta.file ? [meta.file] : []).slice(-20)
+  meta.file = file
+  meta.width = size.width
+  meta.height = size.height
+  if (region) meta.region = region
+  else delete meta.region
+  writeMeta(meta)
+  notifyLibraryChanged()
+  // 編集画面は同じ履歴で開き直す（絵が変わると、画面側の大きさ・切り抜きの前提がすべて変わるため）
+  const bounds = win.getBounds()
+  win.allowClose = true
+  win.close()
+  openEditor(image, meta, { from: bounds, replaced: true })
+}
+
+// 編集画面の「撮り直し・差し替え」のメニューから。画面側は先に書き込みを履歴へ流してから頼んでくる
+ipcMain.on('editor:replace', async (e, how) => {
+  const win = BrowserWindow.fromWebContents(e.sender)
+  if (!win || win.isDestroyed() || capturing || scrollBusy) return
+  const meta = win.libraryId ? readEntry(win.libraryId) : null
+  if (!meta) return
+  if (how === 'clipboard') {
+    const img = clipboard.readImage()
+    if (img.isEmpty()) { win.webContents.send('editor:toast', 'クリップボードに画像がありません'); return }
+    replaceBaseImage(win, img, null)
+    return
+  }
+  if (how === 'file') {
+    const r = await dialog.showOpenDialog(win, {
+      title: '差し替える絵を選ぶ',
+      defaultPath: settings.saveDir,
+      properties: ['openFile'],
+      filters: [{ name: '画像', extensions: IMPORT_EXTS.map((x) => x.slice(1)) }],
+    })
+    if (r.canceled || !r.filePaths.length) return
+    const img = nativeImage.createFromPath(r.filePaths[0])
+    if (img.isEmpty()) { win.webContents.send('editor:toast', 'この画像は読めませんでした'); return }
+    replaceBaseImage(win, img, null)
+    return
+  }
+  // 撮って差し替える。撮る前に編集画面を隠す（写り込まないように）
+  win.hide()
+  await hideLibraryForCapture()
+  await delay(220)
+  if (how === 'sameRegion' && validRegion(meta.region)) {
+    const img = await grabRegionImage(meta.region)
+    if (img) { replaceBaseImage(win, img, meta.region); return }
+  }
+  // 前と同じ範囲が使えないとき（画面の構成が変わった）も、選び直してもらう
+  startRegionCapture('replace', { win })
+})
 
 // 撮った直後に編集画面を出さない設定のとき、自動ぼかし・コピーを見えない編集画面にやらせる。
 // 終わるまでに同じ履歴を開こうとしたら、終わるのを待ってから開く（両方が履歴へ書いて上書きし合わないように）
@@ -1488,7 +1830,7 @@ ipcMain.handle('app:copyCaptured', (e, d) => {
 // 操作バーは撮る範囲の外に置き、さらに「録画に写らない窓」にしてある。
 
 const RECORD_MAX_SEC = 600
-const RECORD_BAR = { width: 300, height: 54 }
+const RECORD_BAR = { width: 380, height: 54 }
 // 確認画面を最前面のままにしておく長さ。持ち上げ終わるのを待つだけなので短くてよい
 const RECORD_FRONT_MS = 600
 
@@ -1496,9 +1838,10 @@ let recordWin = null
 let recordDisplayId = null
 let recording = false
 
-function startRecording(display, crop) {
+function startRecording(display, crop, firstImage) {
   if (recording || (recordWin && !recordWin.isDestroyed())) return
   recording = true
+  recordPaused = false
   recordDisplayId = display.id
 
   const wa = display.workArea
@@ -1531,7 +1874,33 @@ function startRecording(display, crop) {
     once: true,
     onGiveUp: closeRecordWindow,
     onReady: () => {
-      // 範囲選択の暗幕が消えきってから録り始める（消える途中が写り込まないように）
+      // 設定で決めた秒数だけ、画面の真ん中に大きくカウントダウンしてから録る。
+      // カウントダウンの窓は録り始める前に消す（写り込まないように）
+      const count = [3, 5].includes(settings.recordCountdown) ? settings.recordCountdown : 0
+      // 自動ぼかしは、録り始める前に1回読んでおく（カウントダウンと並行して）
+      if (settings.recordAutoBlur !== false) recordBlurScan(display, crop, firstImage)
+      if (count) {
+        let left = count
+        showCountdown(left)
+        const t = setInterval(() => {
+          left--
+          if (!recordWin || recordWin.isDestroyed()) { clearInterval(t); hideCountdown(); return }
+          if (left > 0) { showCountdown(left); return }
+          clearInterval(t)
+          hideCountdown()
+          beginRecord()
+        }, 1000)
+        return
+      }
+      beginRecord()
+    },
+  })
+  // 範囲選択の暗幕が消えきってから録り始める（消える途中が写り込まないように）
+  function beginRecord() {
+      if (settings.recordAutoBlur !== false) {
+        clearInterval(recordBlurTimer)
+        recordBlurTimer = setInterval(() => recordBlurScan(display, crop, null), RECORD_BLUR_MS)
+      }
       setTimeout(() => {
         if (!recordWin || recordWin.isDestroyed()) return
         recordWin.webContents.send('record:init', {
@@ -1543,16 +1912,18 @@ function startRecording(display, crop) {
           gifMaxWidth: Number.isFinite(settings.gifMaxWidth) ? settings.gifMaxWidth : 0,
           audio: settings.recordAudio !== false,
           maxSec: RECORD_MAX_SEC,
+          autoBlur: settings.recordAutoBlur !== false,
+          blurBoxes: recordBlurBoxes,
         })
       }, 250)
-    },
-  })
+  }
   recordWin.once('ready-to-show', () => {
     if (!recordWin || recordWin.isDestroyed()) return
     recordWin.setAlwaysOnTop(true, 'screen-saver')
     recordWin.showInactive()
   })
   recordWin.on('closed', () => {
+    stopRecordBlur()
     recordWin = null
     recording = false
     refreshTrayMenu()
@@ -1560,9 +1931,56 @@ function startRecording(display, crop) {
   refreshTrayMenu()
 }
 
+// ---- 録画中の自動ぼかし
+// 録画中も RECORD_BLUR_MS ごとに録る範囲の文字を読み、個人情報らしい所の四角を録画の画面へ送る。
+// 画面側は、次に届くまでその四角にモザイクをかけたまま録る（読むあいだにスクロールした所は見落とすことがある）
+const RECORD_BLUR_MS = 2500
+let recordBlurTimer = null
+let recordBlurBusy = false
+let recordBlurBoxes = []
+
+async function recordBlurScan(display, crop, image) {
+  if (recordBlurBusy) return
+  recordBlurBusy = true
+  const tmp = path.join(os.tmpdir(), 'screenshooter-recblur-' + process.pid + '.png')
+  try {
+    let img = image
+    if (!img) {
+      const full = await grabDisplay(display)
+      if (!full) return
+      img = full.crop({ x: crop.x, y: crop.y, width: crop.width, height: crop.height })
+    }
+    fs.writeFileSync(tmp, img.toPNG())
+    const ocr = await readTextPositions(tmp)
+    if (!ocr) return
+    let userName = ''
+    try { userName = os.userInfo().username } catch (_) {}
+    const boxes = findPrivateBoxes(ocr, { userName, words: settings.autoBlurWords, labels: settings.autoBlurLabels, level: settings.autoBlurLevel })
+    recordBlurBoxes = boxes.map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h }))
+    if (recordWin && !recordWin.isDestroyed()) recordWin.webContents.send('record:blur', recordBlurBoxes)
+  } catch (err) {
+    console.error('録画の自動ぼかしの読み取りに失敗:', err)
+  } finally {
+    try { fs.rmSync(tmp, { force: true }) } catch (_) {}
+    recordBlurBusy = false
+  }
+}
+
+function stopRecordBlur() {
+  clearInterval(recordBlurTimer)
+  recordBlurTimer = null
+  recordBlurBoxes = []
+}
+
 function stopRecording() {
   if (!recordWin || recordWin.isDestroyed()) return
   recordWin.webContents.send('record:stop')
+}
+
+let recordPaused = false
+function pauseRecording() {
+  if (!recordWin || recordWin.isDestroyed() || !recording) return
+  recordWin.webContents.send('record:pause')
 }
 
 function closeRecordWindow() {
@@ -1576,6 +1994,8 @@ ipcMain.on('record:cancel', () => closeRecordWindow())
 
 ipcMain.on('record:state', (e, d) => {
   recording = !!(d && d.recording)
+  recordPaused = !!(d && d.paused)
+  if (!recording) stopRecordBlur()
   refreshTrayMenu()
 })
 
@@ -1809,6 +2229,11 @@ function editorInitData(image, meta) {
     rectRadius: RECT_RADII.includes(settings.rectRadius) ? settings.rectRadius : 0,
     zoomK: ZOOM_FACTORS.includes(settings.zoomK) ? settings.zoomK : 2,
     padLast: validPad(settings.padLast),
+    textFace: TEXT_FACES.includes(settings.textFace) ? settings.textFace : 'gothic',
+    textBold: settings.textBold !== false,
+    textItalic: !!settings.textItalic,
+    textUnderline: !!settings.textUnderline,
+    textAlign: TEXT_ALIGNS.includes(settings.textAlign) ? settings.textAlign : 'left',
     stylePresets: stylePresets(),
     libraryId: meta ? meta.id : null,
     canRetake: !!(meta && validRegion(meta.region)),
@@ -1921,6 +2346,7 @@ function openEditor(image, meta, opts) {
         addShapes: o.addShapes || null,
         autoBlur: !!o.autoBlur,
         // 撮った直後だけ：自動ぼかしのあとクリップボードへ入れる
+        replaced: !!o.replaced,
         copyMode: o.copyMode || 'off',
       }))
       win.webContents.send('editor:title', win.getTitle())
@@ -2013,6 +2439,65 @@ ipcMain.handle('app:save', async (e, data) => {
   return r
 })
 
+// 元の絵が大きすぎるとき（30MB 超）は入れない。書き込み版が重くなりすぎるため
+const EMBED_MAX_BYTES = 30 * 1024 * 1024
+
+function embedEdits(buf, meta) {
+  try {
+    const src = originalPath(meta)
+    if (!src) return buf
+    const orig = fs.readFileSync(src)
+    if (orig.length > EMBED_MAX_BYTES) return buf
+    return pngmeta.embed(buf, {
+      app: 'ScreenShooter', v: 1,
+      name: path.basename(src),
+      width: meta.width, height: meta.height,
+      shapes: meta.shapes || [], crop: meta.crop || null,
+      scale: entryScale(meta), cuts: entryCuts(meta), pad: validPad(meta.pad),
+      title: meta.title || '', tags: meta.tags || [],
+      original: orig.toString('base64'),
+    })
+  } catch (err) {
+    console.error('編集の情報を入れられませんでした:', err)
+    return buf
+  }
+}
+
+// ScreenShooter の書き込み版（編集の情報入り）なら、元の絵を保存先へ書き出し、図形ごと履歴に入れる。
+// ふつうの絵なら null（いつもどおり取り込む）
+function importWithEdits(src) {
+  let info = null
+  try { info = pngmeta.extract(fs.readFileSync(src)) } catch (_) { info = null }
+  if (!info || typeof info.original !== 'string') return null
+  const orig = Buffer.from(info.original, 'base64')
+  const img = nativeImage.createFromBuffer(orig)
+  if (img.isEmpty()) return null
+  let file
+  try {
+    fs.mkdirSync(settings.saveDir, { recursive: true })
+    const base = path.basename(String(info.name || ''), path.extname(String(info.name || ''))) || path.basename(src, path.extname(src))
+    file = uniquePath(settings.saveDir, cleanFileBase(base) || timestampBase(), '.png')
+    fs.writeFileSync(file, orig)
+  } catch (err) {
+    console.error('元の絵を書き出せませんでした:', err)
+    return null
+  }
+  const meta = addFileToLibrary(file, img, src)
+  if (!meta) return null
+  meta.shapes = Array.isArray(info.shapes) ? info.shapes : []
+  meta.crop = info.crop || null
+  if (validScale(info.scale) && info.scale !== 1) meta.scale = info.scale
+  const cuts = validCuts(info.cuts)
+  if (cuts.length) meta.cuts = cuts
+  const pad = validPad(info.pad)
+  if (pad) meta.pad = pad
+  if (info.title) meta.title = String(info.title).slice(0, 200)
+  if (Array.isArray(info.tags) && info.tags.length) meta.tags = info.tags.map(String).slice(0, 30)
+  meta.importedEdits = true
+  writeMeta(meta)
+  return meta
+}
+
 async function saveImage(e, data) {
   const win = BrowserWindow.fromWebContents(e.sender)
   const meta = data.libraryId ? readEntry(data.libraryId) : null
@@ -2052,6 +2537,9 @@ async function saveImage(e, data) {
   } catch (err) {
     return { ok: false, error: String(err) }
   }
+
+  // 書き込み版には、元の絵と図形の位置を入れておく。ScreenShooter に落とした人は図形を動かせる（チームで渡し合うため）
+  if (edited && meta && settings.embedEdits !== false) buf = embedEdits(buf, meta)
 
   let target = edited
     ? ((meta && meta.editedPath) ? meta.editedPath : editedPathFor(meta))
@@ -2148,6 +2636,9 @@ const LINE_DASHES = ['solid', 'dash', 'dot']
 const RECT_RADII = [0, 6, 12, 20]
 const ZOOM_FACTORS = [1.5, 2, 2.5, 3, 4]
 const PAD_COLORS = ['#ffffff', '#000000', 'transparent']
+// 文字の書体・寄せ（editor.js の TEXT_FACES / TEXT_ALIGNS と同じ）
+const TEXT_FACES = ['gothic', 'meiryo', 'ud', 'mincho', 'arial']
+const TEXT_ALIGNS = ['left', 'center', 'right']
 
 // 手で足した余白 { t, r, b, l, color }。壊れた値・全部 0 は「余白なし」（null）
 function validPad(p) {
@@ -2176,6 +2667,9 @@ ipcMain.on('app:setDefaults', (e, data) => {
   if (RECT_RADII.includes(data.rectRadius)) patch.rectRadius = data.rectRadius
   if (ZOOM_FACTORS.includes(data.zoomK)) patch.zoomK = data.zoomK
   if (data.pad) { const p = validPad(data.pad); if (p) patch.padLast = p }
+  if (TEXT_FACES.includes(data.textFace)) patch.textFace = data.textFace
+  for (const k of ['textBold', 'textItalic', 'textUnderline']) if (typeof data[k] === 'boolean') patch[k] = data[k]
+  if (TEXT_ALIGNS.includes(data.textAlign)) patch.textAlign = data.textAlign
   const rz = data.resize
   if (rz && ['pct', 'width', 'height'].includes(rz.mode)) {
     const num = (v, hi) => (Number.isFinite(v) && v > 0 && v <= hi ? v : 0)
@@ -2185,7 +2679,7 @@ ipcMain.on('app:setDefaults', (e, data) => {
 })
 
 // お気に入りに登録できる道具。選択・つかむ・切り抜きは「書き方」を持たないので入れない（editor.js の PRESET_TOOLS と同じ）
-const PRESET_TOOLS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'marker', 'text', 'bubble', 'step', 'blur', 'spot', 'zoom']
+const PRESET_TOOLS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'marker', 'text', 'bubble', 'step', 'blur', 'spot', 'zoom', 'brace']
 
 // お気に入り1つを検査する。知らない道具・色・範囲外の数は設定ファイルに書かない（手で壊されたときも既定に戻す）
 function cleanPreset(p) {
@@ -3033,6 +3527,10 @@ ipcMain.on('library:menu', (e, payload) => {
       enabled: !!fileOf(meta),
       click: () => shell.showItemInFolder(fileOf(meta)),
     },
+    { label: 'ファイルの場所（パス）をコピー', enabled: !!fileOf(meta), click: () => clipboard.writeText(fileOf(meta)) },
+    { type: 'separator' },
+    { label: '名前を変える…', accelerator: 'F2', registerAccelerator: false, click: () => askLibraryInfo(id, 'rename') },
+    { label: 'タイトル・タグを付ける…', click: () => askLibraryInfo(id, 'info') },
     { type: 'separator' },
     {
       label: 'この1枚を履歴から消す（ファイルは残る）',
@@ -3421,6 +3919,13 @@ ipcMain.handle('settings:save', (e, patch) => {
   if (typeof patch.hotkeyRecord === 'string') clean.hotkeyRecord = patch.hotkeyRecord.trim()
   if (typeof patch.hotkeyRepeat === 'string') clean.hotkeyRepeat = patch.hotkeyRepeat.trim()
   if (typeof patch.hotkeyDelay === 'string') clean.hotkeyDelay = patch.hotkeyDelay.trim()
+  if (typeof patch.hotkeyOcr === 'string') clean.hotkeyOcr = patch.hotkeyOcr.trim()
+  if (typeof patch.hotkeyColor === 'string') clean.hotkeyColor = patch.hotkeyColor.trim()
+  if (typeof patch.captureCursor === 'boolean') clean.captureCursor = patch.captureCursor
+  if (typeof patch.claudeTranslate === 'boolean') clean.claudeTranslate = patch.claudeTranslate
+  if (typeof patch.recordAutoBlur === 'boolean') clean.recordAutoBlur = patch.recordAutoBlur
+  if (typeof patch.embedEdits === 'boolean') clean.embedEdits = patch.embedEdits
+  if ([0, 3, 5].includes(patch.recordCountdown)) clean.recordCountdown = patch.recordCountdown
   if (Number.isFinite(patch.delaySeconds)) clean.delaySeconds = Math.max(1, Math.min(60, Math.round(patch.delaySeconds)))
   if (AFTER_CAPTURES.includes(patch.afterCapture)) clean.afterCapture = patch.afterCapture
   if (CAPTURE_CLIPBOARDS.includes(patch.captureClipboard)) clean.captureClipboard = patch.captureClipboard
@@ -3503,6 +4008,8 @@ function applyHotkeys() {
   reg(settings.hotkeyFull, '画面全体を撮る', () => { captureFullScreen() })
   reg(settings.hotkeyRepeat, '前回と同じ範囲で撮る', () => { captureLastRegion() })
   reg(settings.hotkeyScroll, 'スクロールして長いページを撮る', () => { startRegionCapture('scroll') })
+  reg(settings.hotkeyOcr, '文字を読み取ってコピー', () => { startRegionCapture('ocr') })
+  reg(settings.hotkeyColor, '色を拾ってコピー', () => { startRegionCapture('color') })
   // 時間差のキーは、数えている途中に押すと「やめる」になる
   reg(settings.hotkeyDelay, '時間差で撮る', () => {
     if (delayTimer) cancelDelayedCapture()
@@ -3648,8 +4155,10 @@ function trayMenuTemplate() {
       settings.hotkeyRecord,
       () => { if (recording) stopRecording(); else startRegionCapture('record') },
     ),
-    // 録画中は「止める」だけを出す（同じ範囲でもう1本は重ねて始められない）
-    ...(recording ? [] : [{ label: repeatLabel('前回と同じ範囲で録画'), click: () => recordLastRegion() }]),
+    // 録画中は「止める」と「一時停止」だけを出す（同じ範囲でもう1本は重ねて始められない）
+    ...(recording
+      ? [{ label: recordPaused ? '録画を再開する' : '録画を一時停止する', click: () => pauseRecording() }]
+      : [{ label: repeatLabel('前回と同じ範囲で録画'), click: () => recordLastRegion() }]),
     // 数えている途中は「やめる」だけを出す
     delayTimer
       ? { label: '時間差撮影をやめる', click: () => cancelDelayedCapture() }
@@ -3663,6 +4172,8 @@ function trayMenuTemplate() {
         ],
       },
     { label: 'クリップボードの画像を開く', click: () => openClipboardImage(true) },
+    trayItem('文字を読み取ってコピー', settings.hotkeyOcr, () => startRegionCapture('ocr')),
+    trayItem('色を拾ってコピー', settings.hotkeyColor, () => startRegionCapture('color')),
     { type: 'separator' },
     { label: '履歴パネルを開く', click: () => showLibrary(false) },
     // 浮かせた絵があるときだけ出す（自前のメニューは「押せない項目」を持てないため）

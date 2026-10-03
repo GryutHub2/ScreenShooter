@@ -260,3 +260,66 @@ body { display: flex; flex-direction: column; }
   stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
 #dock .big svg { width: 28px; height: 28px; stroke-width: 2.2; }
+
+/* ---------------------------------------------------------- 絞り込み・名前とタグ */
+
+#search {
+  width: 180px;
+  height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg, #e8eaed);
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 6px;
+  -webkit-app-region: no-drag;
+}
+#search:focus { outline: 1px solid #3b82f6; border-color: #3b82f6; }
+.cap.titled { color: #ffd166; }
+#infoForm {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .45);
+}
+#infoForm[hidden] { display: none; }
+#infoBox {
+  width: min(520px, calc(100vw - 24px));
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #2c3037;
+  border: 1px solid #454a53;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+}
+#infoTitle { font-weight: 600; margin-bottom: 10px; }
+.infoRow { display: flex; align-items: center; gap: 8px; margin: 6px 0; white-space: nowrap; }
+.infoRow[hidden] { display: none; }
+.infoRow input {
+  flex: 1 1 auto;
+  height: 30px;
+  padding: 0 8px;
+  font: inherit;
+  color: #e8eaed;
+  background: #23262b;
+  border: 1px solid #454a53;
+  border-radius: 6px;
+}
+.infoRow input:focus { outline: 1px solid #3b82f6; border-color: #3b82f6; }
+#infoErr { color: #ff8a80; min-height: 18px; font-size: 13px; }
+.infoBtns { display: flex; justify-content: flex-end; gap: 8px; }
+.infoBtns button {
+  height: 30px;
+  padding: 0 14px;
+  font: inherit;
+  color: #e8eaed;
+  background: #23262b;
+  border: 1px solid #454a53;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.infoBtns button.primary { background: #3b82f6; border-color: #3b82f6; color: #fff; font-weight: 600; }

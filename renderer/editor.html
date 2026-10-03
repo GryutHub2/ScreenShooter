@@ -60,6 +60,10 @@
       <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.4"/><path d="M8.4 8.4L10.6 6.9v6.2"/></svg>
       <span>番号</span>
     </button>
+    <button class="tool" data-tool="brace" title="中かっこ（K）：「この範囲」を示す ｛。範囲の側から説明の側へ引くと、とがった所が説明の側に来る。縦長に引けば縦、横長に引けば横">
+      <svg viewBox="0 0 20 20"><path d="M8 3.2c-2 0-2.4 1-2.4 2.4v2.2c0 1.2-.7 2.2-2.4 2.2 1.7 0 2.4 1 2.4 2.2v2.2c0 1.4.4 2.4 2.4 2.4M12 3.2c2 0 2.4 1 2.4 2.4v2.2c0 1.2.7 2.2 2.4 2.2-1.7 0-2.4 1-2.4 2.2v2.2c0 1.4-.4 2.4-2.4 2.4" fill="none"/></svg>
+      <span>かっこ</span>
+    </button>
     <button class="tool" data-tool="blur" title="ぼかし（B）">
       <svg viewBox="0 0 20 20"><rect x="3.2" y="5.2" width="13.6" height="9.6" rx="1"/><path d="M3.2 8.4h13.6M3.2 11.6h13.6M6.6 5.2v9.6M10 5.2v9.6M13.4 5.2v9.6" stroke-width="1"/></svg>
       <span>ぼかし</span>
@@ -133,6 +137,8 @@
     </select>
     <!-- フチの太さの選択肢は HALOS から作る（editor.js） -->
     <select class="pick" id="fontHalo" title="フチの厚み。太くすると文字のまわりが塗りつぶされる"></select>
+    <!-- 書体・太字・斜体・下線・寄せ。欄を広げるとツールバーの段が増えるので、小さなパネルにまとめる -->
+    <button class="txt" id="btnFormat" title="書体・太字・斜体・下線・左／中央／右寄せ">書式</button>
   </div>
   </div>
 
@@ -148,7 +154,7 @@
   <div class="group">
     <button class="txt" id="btnLibrary" title="履歴パネルを開く（過去の1枚を開き直せます）">履歴</button>
     <button class="txt" id="btnRetake" hidden
-      title="この絵と同じ範囲をもう一度撮って、新しい1枚として開きます（この絵はそのまま残ります）">同じ範囲で撮り直す</button>
+      title="撮り直す、または書き込みはそのままに下の絵だけを差し替えます">撮り直し・差し替え</button>
     <button class="txt" id="btnFocus"
       title="集中モード（F）：窓の枠も道具も消して絵だけにします。カーソルを窓の外へ出すと道具も消えます">集中</button>
   </div>
@@ -162,6 +168,28 @@
     <button class="txt" id="btnSplit" hidden
       title="縦に長い画像を何枚かに分けて保存します。Google ドキュメントなどに貼るとき用">分割保存</button>
   </div>
+</div>
+
+<!-- 書式のパネル（「書式」ボタンの下に出す） -->
+<div id="fmtPanel" hidden>
+  <select class="pick" id="fmtFace" title="書体"></select>
+  <button class="fmt" id="fmtB" title="太字"><b>B</b></button>
+  <button class="fmt" id="fmtI" title="斜体"><i>I</i></button>
+  <button class="fmt" id="fmtU" title="下線"><u>U</u></button>
+  <span class="fmtSep"></span>
+  <button class="fmt" data-align="left" title="左寄せ">左</button>
+  <button class="fmt" data-align="center" title="中央寄せ">中央</button>
+  <button class="fmt" data-align="right" title="右寄せ">右</button>
+</div>
+
+<!-- 撮り直し・差し替えのメニュー（ボタンの下に出す）。項目は editor.js が出し分ける -->
+<div id="replaceMenu" hidden>
+  <button data-how="retake">同じ範囲で撮り直す（新しい1枚）</button>
+  <button data-how="sameRegion">同じ範囲で撮って、下の絵を差し替え</button>
+  <button data-how="region">範囲を選んで撮って、下の絵を差し替え</button>
+  <button data-how="clipboard">クリップボードの絵に差し替え</button>
+  <button data-how="file">ファイルの絵に差し替え…</button>
+  <div class="rmNote">差し替えても書き込みはそのまま残ります。前の絵は保存先に残ります</div>
 </div>
 
 <div id="canvasWrap">
