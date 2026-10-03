@@ -1,6 +1,5 @@
 // 履歴パネル：2枚をえらぶ → 右クリック →「横に並べて1枚に」／「違いに赤枠を付ける」
-// 右クリックメニューは本物（input.ps1 の本物の右クリック）。項目の位置は --mode=calib の静止画で測って
-// --combY / --diffY / --itemX（右クリックした点からの距離、実ピクセル）で渡す
+// 右クリックメニューは本物（input.ps1 の本物の右クリック）。メニューはパネルの中に描かれるので、項目の位置は画面から読む
 const path = require('path')
 const fs = require('fs')
 const { app } = require('electron')
@@ -56,9 +55,12 @@ H.main('before-after', async (ctx) => {
     return
   }
 
-  const itemX = Number(arg('itemX', '120'))
-  const diffAt = { x: cs[1].x + itemX, y: cs[1].y + Number(arg('diffY', '191')) }
-  const combAt = { x: cs[1].x + itemX, y: cs[1].y + Number(arg('combY', '107')) }
+  // 右クリックメニューの項目（文字の頭で探す）の真ん中。開いてから読む
+  const itemAt = async (head) => {
+    const r = await H.waitFor(() => lib.webContents.executeJavaScript(`(() => { const m = Array.from(document.querySelectorAll('#ctxMenu:not([hidden]) .mi')).find((x) => x.textContent.startsWith(${JSON.stringify(head)})); if (!m) return null; const r = m.getBoundingClientRect(); return { x: r.x + 90, y: r.y + r.height / 2 } })()`), 5000)
+    if (!r) throw new Error('menu item not found: ' + head)
+    return H.phys(cb.x + r.x, cb.y + r.y)
+  }
   await H.makeCaption({ x: cb.x + 10, y: cb.y + Number(arg('capY', '425')), width: cb.width - 20, height: 64 }, CAPS)
   await H.makeCursor()
 
@@ -89,8 +91,12 @@ H.main('before-after', async (ctx) => {
     H.cap(2), 'wait 700', H.mv(cs[2], 700), 'ctrl down', 'wait 250', 'click', 'wait 150', 'ctrl up', 'wait 400',
     H.cap(3), 'wait 1800', 'echo CAPOFF', 'wait 300'])
   // 違いに赤枠は「後」の絵に枠を足すので、並べて1枚にを先に撮る
-  await shot('combine', [H.cap(4), 'wait 500', H.mv(cs[1], 600), 'wait 250', 'rclick', 'wait 900',
-    H.cap(6), 'wait 300', H.mv(combAt, 700), 'wait 900', 'click', 'echo CAPOFF', 'wait 300', H.mv(rest, 500), 'wait 1500'])
-  await shot('diff', [H.cap(4), 'wait 500', H.mv(cs[1], 600), 'wait 250', 'rclick', 'wait 900',
-    H.cap(5), 'wait 300', H.mv(diffAt, 700), 'wait 900', 'click', 'echo CAPOFF', 'wait 500'])
+  await shot('combine', async () => {
+    await H.run([H.cap(4), 'wait 500', H.mv(cs[1], 600), 'wait 250', 'rclick', 'wait 900'])
+    await H.run([H.cap(6), 'wait 300', H.mv(await itemAt('横に並べて'), 700), 'wait 900', 'click', 'echo CAPOFF', 'wait 300', H.mv(rest, 500), 'wait 1500'])
+  })
+  await shot('diff', async () => {
+    await H.run([H.cap(4), 'wait 500', H.mv(cs[1], 600), 'wait 250', 'rclick', 'wait 900'])
+    await H.run([H.cap(5), 'wait 300', H.mv(await itemAt('違いに赤枠'), 700), 'wait 900', 'click', 'echo CAPOFF', 'wait 500'])
+  })
 })

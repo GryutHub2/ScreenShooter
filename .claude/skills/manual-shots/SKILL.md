@@ -39,7 +39,7 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 
 | 場面 | 撮る GIF | 調整の引数 |
 |---|---|---|
-| `before-after` | select / combine / diff（履歴パネルで2枚をえらぶ → 右クリック） | `--combY` `--diffY` `--itemX`（右クリックした点からメニュー項目までの実ピクセル。calib の静止画で測る）、`--capY` |
+| `before-after` | select / combine / diff（履歴パネルで2枚をえらぶ → 右クリック） | `--capY` |
 | `pin` | pin-wheel / pin-corner / pin-opacity（浮かせた絵の大きさ・濃さ） | `--only` |
 | `shapes` | shapes-copy-snap（図形の Ctrl+C/V と Shift の吸い付き） | なし |
 | `privacy` | autoblur / blur-manual（自動ぼかし → 足りない所を B で囲む） | なし |
@@ -55,7 +55,7 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 | `textcolor` | ocr / color（文字を読み取ってコピー・色を拾ってコピー。架空のエラー画面 notice を窓に出す。本物のクリップボードを使い、終わったら戻す） | `--only=ocr` か `--only=color` |
 | `textstyle` | brace / format（かっこ・書式。1回に1本） | `--only=brace` か `--only=format`（必須） |
 | `replace` | replace（赤枠と矢印を描いた「前」を、クリップボードの「後」に差し替える。開き直す窓のために画面全体を無地で覆う） | なし |
-| `tags` | tags（右クリック →「タイトル・タグを付ける」→ Ctrl+F で絞り込み） | `--mode=calib`、`--itemX` `--infoY`（実測 108 / 317） |
+| `tags` | tags（右クリック →「タイトル・タグを付ける」→ タグを候補から選ぶ → Ctrl+F で絞り込み） | `--capY` |
 | `editor-calib` | 撮らない。`--page=<架空の画面>` を編集画面で開き、窓全体の静止画と部品の位置を残す | `--page` `--height` |
 
 新しい場面は、既存の1つを写して作る。共通の部品は `harness.js`：
@@ -64,7 +64,7 @@ node_modules\electron\dist\electron.exe ".claude\skills\manual-shots\scripts" --
 
 ## ハマりどころ
 
-- 履歴パネルの右クリックメニューはパネルの中に描く自前のもの（2026-10-04 から）。項目の位置（`before-after` の `--combY` `--diffY` `--itemX`、`tags` の `--itemX` `--infoY`）は `--mode=calib` で測り直す
+- 履歴パネルの右クリックメニューはパネルの中に描く自前のもの。項目の位置は台本が画面（`#ctxMenu .mi`）から読むので、測り直しは要らない。メニューはパネルからはみ出せないので、字幕と重ならない高さに置く
 
 - **本物の矢印は写らないことがある。** Windows の「入力中にポインターを隠す」がオンだと、キーを打ったあとは手でマウスを動かすまで矢印が消える。そのため `makeCursor()` が自前の矢印を重ねている
 - 録画が始まった合図は来ない。`clip()` は record.html の `phase === 'rec'` を見に行く
