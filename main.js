@@ -45,7 +45,7 @@ function defaultSettings() {
     lastRegion: null,               // 前回、範囲選択で撮った場所（rememberRegion が書く）
     // 撮った直後
     afterCapture: 'editor',         // 'editor' = 編集画面を開く / 'library' = 開かずに履歴パネルを出す
-    quickClipboard: false,
+    quickClipboard: false,          // true = 何も開かずにコピーだけして、1秒のお知らせを出す（afterCapture / captureClipboard より優先）
     captureClipboard: 'image',      // 撮った直後にクリップボードへ（CAPTURE_CLIPBOARDS）。自動ぼかしが済んでから入れる
     saveDir: path.join(app.getPath('pictures'), 'ScreenShooter'),
     sendToMenu: false,              // 右クリックの「送る」に「ScreenShooterで開く」を出す
