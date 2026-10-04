@@ -45,6 +45,7 @@ function defaultSettings() {
     lastRegion: null,               // 前回、範囲選択で撮った場所（rememberRegion が書く）
     // 撮った直後
     afterCapture: 'editor',         // 'editor' = 編集画面を開く / 'library' = 開かずに履歴パネルを出す
+    quickClipboard: false,
     captureClipboard: 'image',      // 撮った直後にクリップボードへ（CAPTURE_CLIPBOARDS）。自動ぼかしが済んでから入れる
     saveDir: path.join(app.getPath('pictures'), 'ScreenShooter'),
     sendToMenu: false,              // 右クリックの「送る」に「ScreenShooterで開く」を出す
@@ -1595,12 +1596,16 @@ function captureDone(image, region, opts) {
     meta.shapes = opts.shapes
     writeMeta(meta)
   }
-  const clip = CAPTURE_CLIPBOARDS.includes(settings.captureClipboard) ? settings.captureClipboard : 'image'
+  const quick = settings.quickClipboard === true && !(opts && opts.editor)
+  const clip = quick ? 'image' : (CAPTURE_CLIPBOARDS.includes(settings.captureClipboard) ? settings.captureClipboard : 'image')
   const autoBlur = settings.autoBlur !== false
   // ファイルの場所だけなら絵を作る必要がないので、ここで入れてしまう
   if (clip === 'path' && meta && meta.file) clipboard.writeText(meta.file)
   const tasks = { autoBlur, copyMode: clip }
-  if ((opts && opts.editor) || settings.afterCapture !== 'library' || !meta) {
+  if (quick && meta) {
+    tasks.noticeDisplay = regionDisplay(region) || screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+    runBackgroundEditor(image, meta, tasks)
+  } else if ((opts && opts.editor) || settings.afterCapture !== 'library' || !meta) {
     openEditor(image, meta, tasks)
   } else {
     showLibrary(true)
@@ -1788,6 +1793,7 @@ function runBackgroundEditor(image, meta, tasks) {
     })
     // 自動ぼかしの読み取り（editor:findPrivate）は、窓が持つ履歴の ID で絵を決める
     win.libraryId = meta.id
+    win.captureNoticeDisplay = tasks.noticeDisplay
     const wcId = win.webContents.id
     let done = false
     const finish = (d) => {
@@ -1807,7 +1813,7 @@ function runBackgroundEditor(image, meta, tasks) {
     loadGuarded(win, path.join(RENDERER, 'editor.html'), '撮った直後の処理', {
       quiet: true,
       onGiveUp: () => finish(null),
-      onReady: () => win.webContents.send('editor:init', Object.assign(editorInitData(image, meta), tasks, { background: true })),
+      onReady: () => win.webContents.send('editor:init', Object.assign(editorInitData(image, meta), { autoBlur: tasks.autoBlur, copyMode: tasks.copyMode, background: true })),
     })
   })
   backgroundJobs.set(meta.id, job)
@@ -1819,6 +1825,44 @@ ipcMain.on('editor:backgroundDone', (e, d) => {
   if (finish) finish(d || null)
 })
 
+let captureNoticeWin = null
+
+// コピーが成功してから、操作の邪魔をしない窓を1秒だけ出す。
+function showCaptureNotice(display) {
+  if (captureNoticeWin && !captureNoticeWin.isDestroyed()) captureNoticeWin.destroy()
+  const area = display.workArea
+  const width = Math.min(380, area.width)
+  const height = 58
+  const win = new BrowserWindow({
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + area.height * 0.8 - height / 2),
+    width, height, frame: false, resizable: false, show: false,
+    focusable: false, skipTaskbar: true, alwaysOnTop: true,
+    backgroundColor: '#23262b',
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  })
+  captureNoticeWin = win
+  win.setIgnoreMouseEvents(true)
+  win.setContentProtection(true)
+  let timer = null
+  let shown = false
+  win.on('closed', () => {
+    clearTimeout(timer)
+    if (captureNoticeWin === win) captureNoticeWin = null
+  })
+  loadGuarded(win, path.join(RENDERER, 'capture-notice.html'), 'コピー完了の通知', {
+    quiet: true,
+    onGiveUp: () => { if (!win.isDestroyed()) win.destroy() },
+    onReady: () => {
+      if (shown || win.isDestroyed()) return
+      shown = true
+      win.setAlwaysOnTop(true, 'screen-saver')
+      win.showInactive()
+      timer = setTimeout(() => { if (!win.isDestroyed()) win.destroy() }, 1000)
+    },
+  })
+}
+
 // 撮った直後のコピー。絵（と、選んでいればファイルの場所の文字）を一度に入れる
 ipcMain.handle('app:copyCaptured', (e, d) => {
   if (!d || typeof d.dataUrl !== 'string') return { ok: false }
@@ -1827,6 +1871,8 @@ ipcMain.handle('app:copyCaptured', (e, d) => {
     if (img.isEmpty()) return { ok: false }
     if (d.mode === 'imagePath' && typeof d.path === 'string' && d.path) clipboard.write({ image: img, text: d.path })
     else clipboard.writeImage(img)
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (win && win.captureNoticeDisplay) showCaptureNotice(win.captureNoticeDisplay)
     return { ok: true }
   } catch (err) {
     return { ok: false, error: String(err) }
@@ -3960,6 +4006,7 @@ ipcMain.handle('settings:save', (e, patch) => {
   if ([0, 3, 5].includes(patch.recordCountdown)) clean.recordCountdown = patch.recordCountdown
   if (Number.isFinite(patch.delaySeconds)) clean.delaySeconds = Math.max(1, Math.min(60, Math.round(patch.delaySeconds)))
   if (AFTER_CAPTURES.includes(patch.afterCapture)) clean.afterCapture = patch.afterCapture
+  if (typeof patch.quickClipboard === 'boolean') clean.quickClipboard = patch.quickClipboard
   if (CAPTURE_CLIPBOARDS.includes(patch.captureClipboard)) clean.captureClipboard = patch.captureClipboard
   if (EXPORT_FINISHES.includes(patch.exportFinish)) clean.exportFinish = patch.exportFinish
   if (LIBRARY_ORDERS.includes(patch.libraryOrder)) clean.libraryOrder = patch.libraryOrder

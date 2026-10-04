@@ -15,6 +15,7 @@ const recAutoBlurEl = document.getElementById('recAutoBlur')
 const embedEditsEl = document.getElementById('embedEdits')
 const delaySecondsEl = document.getElementById('delaySeconds')
 const afterCaptureEl = document.getElementById('afterCapture')
+const quickClipboardEl = document.getElementById('quickClipboard')
 const captureClipboardEl = document.getElementById('captureClipboard')
 const exportFinishEl = document.getElementById('exportFinish')
 const libOrderEl = document.getElementById('libOrder')
@@ -43,6 +44,7 @@ const current = {
   recordAutoBlur: true, embedEdits: true,
   delaySeconds: 5, afterCapture: 'editor', captureClipboard: 'image', exportFinish: 'none', libraryOrder: 'old',
   autoStart: false,
+  quickClipboard: false,
   sendToMenu: false,
   libraryLimit: 300, snapWindows: true, libraryThumbHeight: 104,
   recordFps: 15, gifFps: 10, gifMaxWidth: 0, recordAudio: true,
@@ -129,6 +131,9 @@ function render() {
   autoBlurLevelEl.value = current.autoBlurLevel
   delaySecondsEl.value = current.delaySeconds
   afterCaptureEl.value = current.afterCapture
+  quickClipboardEl.checked = !!current.quickClipboard
+  afterCaptureEl.disabled = !!current.quickClipboard
+  captureClipboardEl.disabled = !!current.quickClipboard
   captureClipboardEl.value = current.captureClipboard
   exportFinishEl.value = current.exportFinish
   libOrderEl.value = current.libraryOrder
@@ -236,6 +241,7 @@ document.getElementById('btnSave').addEventListener('click', async () => {
   current.autoBlurLevel = autoBlurLevelEl.value
   current.delaySeconds = Math.max(1, Math.min(60, Math.round(Number(delaySecondsEl.value) || 5)))
   current.afterCapture = afterCaptureEl.value
+  current.quickClipboard = quickClipboardEl.checked
   current.captureClipboard = captureClipboardEl.value
   current.exportFinish = exportFinishEl.value
   current.libraryOrder = libOrderEl.value
@@ -288,6 +294,7 @@ const LIVE = [
   [autoBlurLevelEl, 'autoBlurLevel', (el) => el.value],
   [delaySecondsEl, 'delaySeconds', (el) => Math.max(1, Math.min(60, Math.round(Number(el.value) || 5)))],
   [afterCaptureEl, 'afterCapture', (el) => el.value],
+  [quickClipboardEl, 'quickClipboard', (el) => el.checked],
   [captureClipboardEl, 'captureClipboard', (el) => el.value],
   [exportFinishEl, 'exportFinish', (el) => el.value],
   [libOrderEl, 'libraryOrder', (el) => el.value],
@@ -301,6 +308,7 @@ const LIVE = [
 for (const item of LIVE) {
   item[0].addEventListener('change', () => { current[item[1]] = item[2](item[0]) })
 }
+quickClipboardEl.addEventListener('change', render)
 autoBlurWordsEl.addEventListener('input', () => {
   current.autoBlurWords = wordsOf(autoBlurWordsEl.value)
   showBadPatterns()
@@ -332,6 +340,7 @@ window.api.invoke('settings:get').then((s) => {
   current.embedEdits = s.embedEdits !== false
   current.delaySeconds = Number(s.delaySeconds) || 5
   current.afterCapture = s.afterCapture === 'library' ? 'library' : 'editor'
+  current.quickClipboard = s.quickClipboard === true
   current.captureClipboard = ['off', 'image', 'imagePath', 'path'].includes(s.captureClipboard) ? s.captureClipboard : 'image'
   current.exportFinish = ['none', 'border', 'round', 'shadow', 'backdrop'].includes(s.exportFinish) ? s.exportFinish : 'none'
   current.libraryOrder = ['old', 'new', 'name'].includes(s.libraryOrder) ? s.libraryOrder : 'old'
