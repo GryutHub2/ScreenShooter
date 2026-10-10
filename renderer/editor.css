@@ -187,7 +187,9 @@ button:disabled:hover { background: transparent; }
     linear-gradient(45deg, #1e2126 25%, #262a30 25%, #262a30 75%, #1e2126 75%);
   background-size: 20px 20px;
   background-position: 0 0, 10px 10px;
+  cursor: crosshair;   /* 絵の外からも描き始められる合図 */
 }
+#canvasWrap.select { cursor: default; }
 
 /* margin:auto で中央寄せする。flex の中央寄せだと、画像がはみ出したとき
    上と左が切れてスクロールしても見えなくなる */

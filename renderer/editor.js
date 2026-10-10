@@ -2437,7 +2437,19 @@ cv.addEventListener('contextmenu', (e) => {
   draw()
 })
 
-cv.addEventListener('pointerdown', (e) => {
+cv.addEventListener('pointerdown', canvasDown)
+
+// 絵の外（まわりの余白）から押しても、絵の上と同じように描き始める。座標は toImg() が絵の外まで延ばして出す。
+// 以後の動き・離した合図は setPointerCapture で cv に届く
+wrap.addEventListener('pointerdown', (e) => {
+  if (e.target !== wrap || state.tool === 'hand') return
+  const r = wrap.getBoundingClientRect()
+  if (e.clientX - r.left - wrap.clientLeft >= wrap.clientWidth) return
+  if (e.clientY - r.top - wrap.clientTop >= wrap.clientHeight) return
+  canvasDown(e)
+})
+
+function canvasDown(e) {
   if (e.button !== 0) return
   if (editingShape) { commitText(); return }
   const p = toImg(e)
@@ -2540,7 +2552,7 @@ cv.addEventListener('pointerdown', (e) => {
   state.selectedId = null
   drag = { mode: 'draw', cx: p.x, cy: p.y }
   draw()
-})
+}
 
 cv.addEventListener('pointermove', (e) => {
   if (state.tool === 'hand') return
@@ -2766,10 +2778,12 @@ function endDrag() {
     pendingCrop = null
     if (r.w > 8 && r.h > 8) {
       const snap = beginChange()
+      // 絵の外から取り始めても、絵と重なる所だけにする
       const x = Math.max(0, Math.round(r.x))
       const y = Math.max(0, Math.round(r.y))
-      const w = Math.min(state.imgW - x, Math.round(r.w))
-      const h = Math.min(state.imgH - y, Math.round(r.h))
+      const w = Math.min(state.imgW, Math.round(r.x + r.w)) - x
+      const h = Math.min(state.imgH, Math.round(r.y + r.h)) - y
+      if (w < 8 || h < 8) { updateUi(); draw(); return }
       state.crop = { x, y, w, h }
       // 切り抜いた外に丸ごと出ている書き込みは消す。残すと画角がそのぶん広がって切り抜けない
       // スポットライトとぼかしは切り抜き範囲で切り詰められる（paintBounds が null になりうる）ので、自分の四角で判定する
@@ -2817,6 +2831,7 @@ function setTool(tool) {
   state.tool = tool
   if (tool !== 'select' && tool !== 'hand') state.selectedId = null
   cv.classList.toggle('select', tool === 'select')
+  wrap.classList.toggle('select', tool === 'select')
   wrap.classList.toggle('hand', tool === 'hand')
   // 「つかむ」の手のカーソルは CSS 側で出す（直に書くとそちらが勝ってしまう）
   cv.style.cursor = tool === 'hand' ? '' : tool === 'select' ? 'default' : tool === 'cut' ? 'row-resize' : 'crosshair'
