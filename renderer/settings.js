@@ -29,6 +29,7 @@ const libThumbVal = document.getElementById('libThumbVal')
 const recFpsEl = document.getElementById('recFps')
 const gifFpsEl = document.getElementById('gifFps')
 const gifWidthEl = document.getElementById('gifWidth')
+const gifSizeEl = document.getElementById('gifSize')
 const recAudioEl = document.getElementById('recAudio')
 const autoBlurEl = document.getElementById('autoBlur')
 const autoBlurWordsEl = document.getElementById('autoBlurWords')
@@ -47,7 +48,7 @@ const current = {
   quickClipboard: false,
   sendToMenu: false,
   libraryLimit: 300, snapWindows: true, libraryThumbHeight: 104,
-  recordFps: 15, gifFps: 10, gifMaxWidth: 0, recordAudio: true,
+  recordFps: 15, gifFps: 10, gifMaxWidth: 0, gifSize: 'small', recordAudio: true,
   autoBlur: true, autoBlurWords: [], autoBlurLabels: [], autoBlurLevel: 'normal',
 }
 
@@ -126,6 +127,7 @@ function render() {
   recFpsEl.value = String(current.recordFps)
   gifFpsEl.value = String(current.gifFps)
   gifWidthEl.value = String(current.gifMaxWidth)
+  gifSizeEl.value = current.gifSize
   recAudioEl.checked = !!current.recordAudio
   autoBlurEl.checked = !!current.autoBlur
   autoBlurLevelEl.value = current.autoBlurLevel
@@ -234,6 +236,7 @@ document.getElementById('btnSave').addEventListener('click', async () => {
   current.recordFps = Number(recFpsEl.value) || 15
   current.gifFps = Number(gifFpsEl.value) || 10
   current.gifMaxWidth = Math.max(0, Number(gifWidthEl.value) || 0)
+  current.gifSize = gifSizeEl.value === 'quality' ? 'quality' : 'small'
   current.recordAudio = recAudioEl.checked
   current.autoBlur = autoBlurEl.checked
   current.autoBlurWords = wordsOf(autoBlurWordsEl.value)
@@ -289,6 +292,7 @@ const LIVE = [
   [recFpsEl, 'recordFps', (el) => Number(el.value) || 15],
   [gifFpsEl, 'gifFps', (el) => Number(el.value) || 10],
   [gifWidthEl, 'gifMaxWidth', (el) => Math.max(0, Number(el.value) || 0)],
+  [gifSizeEl, 'gifSize', (el) => el.value === 'quality' ? 'quality' : 'small'],
   [recAudioEl, 'recordAudio', (el) => el.checked],
   [autoBlurEl, 'autoBlur', (el) => el.checked],
   [autoBlurLevelEl, 'autoBlurLevel', (el) => el.value],
@@ -354,6 +358,7 @@ window.api.invoke('settings:get').then((s) => {
   current.recordFps = Number(s.recordFps) || 15
   current.gifFps = Number(s.gifFps) || 10
   current.gifMaxWidth = Number.isFinite(Number(s.gifMaxWidth)) ? Number(s.gifMaxWidth) : 0
+  current.gifSize = s.gifSize === 'quality' ? 'quality' : 'small'
   current.recordAudio = s.recordAudio !== false
   current.autoBlur = s.autoBlur !== false
   current.autoBlurWords = Array.isArray(s.autoBlurWords) ? s.autoBlurWords.filter((w) => typeof w === 'string') : []

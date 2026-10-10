@@ -200,6 +200,13 @@
       <option value="5">5 秒</option>
     </select>
   </div>
+  <div class="row">
+    <label for="gifSize">GIF の作り方</label>
+    <select class="pick" id="gifSize">
+      <option value="small">容量優先（MP4 よりずっと小さく）</option>
+      <option value="quality">画質優先（重い）</option>
+    </select>
+  </div>
   <div class="row rowtop">
     <label for="gifWidth">GIF の横幅の上限</label>
     <select class="pick" id="gifWidth">
@@ -211,8 +218,9 @@
     </select>
   </div>
   <p class="note">録ると<b>動画（MP4）と GIF が両方</b>でき、止めたあとにどちらで保存するか選べます。
-    GIF は色が 256 色までなので、大きく・なめらかにするほどファイルが重くなります。
-    <b>横幅を縮めると文字がぼやけます</b>。ファイルが重すぎるときだけ小さくしてください。長さの上限は 10 分です。</p>
+    <b>容量優先</b>は GIF を横幅 800px・5 コマ/秒・128 色までに抑えます（上のなめらかさ・横幅がそれより小さければそちらを使います）。
+    画面の切り替わりが多い録画でも MP4 の 1/4 ほどの重さになりますが、小さい文字はぼやけます。
+    文字をくっきり見せたいときは<b>画質優先</b>（今までの作り方。256 色・縮めない）にしてください。長さの上限は 10 分です。</p>
 </section>
 
 <section>

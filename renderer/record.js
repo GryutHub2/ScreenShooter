@@ -41,6 +41,10 @@ const MIMES_V = [
 
 const GIF_MAX_BYTES = 300 * 1024 * 1024
 
+// 「容量優先」の GIF。絵が大きく入れ替わる録画でも MP4 の 1/4 ほどになる（4K 全画面 34 秒で MP4 22MB → GIF 約5MB）。
+// 横幅・コマ数は設定の値とこちらの小さいほうを使う。網掛けは消す（細かい模様が LZW でほとんど縮まないため）
+const GIF_SMALL = { width: 800, fps: 5, colors: 128, dither: false, tolerance: 6 }
+
 let cfg = null
 let stream = null
 let recorder = null
@@ -63,6 +67,7 @@ let srcRect = null
 let outW = 0
 let outH = 0
 let gifW = 0
+let gifFps = 10
 let gifH = 0
 let hasAudio = false
 let paused = false
@@ -122,7 +127,7 @@ function togglePause() {
     draw()
     try { recorder.resume() } catch (_) {}
     drawTimer = setInterval(draw, Math.max(16, Math.round(1000 / cfg.fps)))
-    gifTimer = setInterval(addGifFrame, Math.max(40, Math.round(1000 / cfg.gifFps)))
+    gifTimer = setInterval(addGifFrame, Math.max(40, Math.round(1000 / gifFps)))
     dotEl.classList.remove('off')
     noteEl.textContent = hasAudio ? '録画中（音あり）' : '録画中（音なし）'
     btnPause.textContent = '一時停止'
@@ -169,15 +174,18 @@ async function start() {
   cv.width = outW
   cv.height = outH
 
-  // 0 は「縮めない」。縮めると文字がぼやけるので、既定は録った大きさのまま
-  const gifLimit = Number(cfg.gifMaxWidth) > 0 ? Number(cfg.gifMaxWidth) : outW
+  // 0 は「縮めない」。容量優先のときは GIF_SMALL.width より大きくしない
+  const small = cfg.gifSize !== 'quality'
+  let gifLimit = Number(cfg.gifMaxWidth) > 0 ? Number(cfg.gifMaxWidth) : outW
+  if (small) gifLimit = Math.min(gifLimit, GIF_SMALL.width)
+  gifFps = small ? Math.min(cfg.gifFps || 10, GIF_SMALL.fps) : (cfg.gifFps || 10)
   gifW = Math.max(2, Math.min(gifLimit, outW))
   gifH = Math.max(2, Math.round(outH * gifW / outW))
   gcv.width = gifW
   gcv.height = gifH
   gctx.imageSmoothingEnabled = true
   gctx.imageSmoothingQuality = 'high'
-  gif = GifLib.createGif(gifW, gifH)
+  gif = GifLib.createGif(gifW, gifH, small ? GIF_SMALL : undefined)
 
   mime = (hasAudio ? MIMES_AV : MIMES_V).find((m) => MediaRecorder.isTypeSupported(m)) || ''
   if (!mime) { fail('この PC では録画の形式が見つかりませんでした'); return }
@@ -200,7 +208,7 @@ async function start() {
   phase = 'rec'
   noteEl.textContent = (hasAudio ? '録画中（音あり）' : '録画中（音なし）') + (cfg.autoBlur ? '・自動ぼかし' : '')
   drawTimer = setInterval(draw, Math.max(16, Math.round(1000 / cfg.fps)))
-  gifTimer = setInterval(addGifFrame, Math.max(40, Math.round(1000 / cfg.gifFps)))
+  gifTimer = setInterval(addGifFrame, Math.max(40, Math.round(1000 / gifFps)))
   tickTimer = setInterval(tick, 200)
 }
 

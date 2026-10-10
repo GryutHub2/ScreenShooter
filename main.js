@@ -64,6 +64,7 @@ function defaultSettings() {
     recordFps: 15,                  // 動画のなめらかさ（1秒あたりのコマ数）
     gifFps: 10,                     // GIF のなめらかさ
     gifMaxWidth: 0,                 // GIF の横幅の上限。0 = 縮めない（録った大きさのまま）
+    gifSize: 'small',               // GIF の作り方。'small' = 容量優先（MP4 よりずっと小さく） / 'quality' = 画質優先
     recordAudio: true,              // パソコンで鳴っている音も一緒に録る
     // 編集画面で最後に使った見た目。次に撮ったときも同じ状態で始める
     color: '#e8453c',
@@ -1969,6 +1970,7 @@ function startRecording(display, crop, firstImage) {
           fps: settings.recordFps || 15,
           gifFps: settings.gifFps || 10,
           gifMaxWidth: Number.isFinite(settings.gifMaxWidth) ? settings.gifMaxWidth : 0,
+          gifSize: settings.gifSize === 'quality' ? 'quality' : 'small',
           audio: settings.recordAudio !== false,
           maxSec: RECORD_MAX_SEC,
           autoBlur: settings.recordAutoBlur !== false,
@@ -4040,6 +4042,7 @@ ipcMain.handle('settings:save', (e, patch) => {
   if (Number.isFinite(patch.libraryThumbHeight)) clean.libraryThumbHeight = Math.max(64, Math.min(240, Math.round(patch.libraryThumbHeight)))
   if (Number.isFinite(patch.recordFps)) clean.recordFps = Math.max(5, Math.min(60, Math.round(patch.recordFps)))
   if (Number.isFinite(patch.gifFps)) clean.gifFps = Math.max(2, Math.min(25, Math.round(patch.gifFps)))
+  if (patch.gifSize === 'small' || patch.gifSize === 'quality') clean.gifSize = patch.gifSize
   if (Number.isFinite(patch.gifMaxWidth)) {
     const gw = Math.round(patch.gifMaxWidth)
     clean.gifMaxWidth = gw <= 0 ? 0 : Math.max(240, Math.min(1920, gw))
