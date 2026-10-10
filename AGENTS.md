@@ -1,10 +1,10 @@
 # ScreenShooter — 変更時の注意
 
 ## 作業の締め（Codex・Claude Code 共通）
+- IMPORTANT: 直したら毎回、頼まれなくても「README と `docs/manual.md` を直す → 記録（コミット）→ GitHub へ送る（プッシュ）」までを1セットでやる（2026-10-10 ユーザー決定。全体ルールの「プッシュは頼まれたときだけ」の例外）。公開されている手順書は GitHub 上の `docs/manual.md` なので、送るまでで公開分も直る。
 - 機能・設定を足したら、同じ記録（コミット）で **README と `docs/manual.md` の両方**を直す。README は使い方に数行＋末尾の変更履歴に新しい世代（V◯◯と日付）を足し、3世代前は `<details>` の中へ1行に縮める。manual は該当の節と末尾「設定」の表。
 - 手順書の GIF を撮る・撮り直すときは `.claude/skills/manual-shots/SKILL.md` を読む（Codex もここを読む）。`.agents/skills/` に写しを作らない（片方だけ直って食い違う）。
 - 直していて罠に当たったら、このファイルの該当の節に1〜2行足す。
-- 「コミットして」と言われたら、GitHub へ送る（プッシュ）までやる。
 
 ## 全体
 - 起動はソース直実行（ショートカットが `node_modules/electron/dist/electron.exe` にこのフォルダを渡す）。ビルド不要。exe 化はしない（このPCは Smart App Control がオン）。
