@@ -980,7 +980,7 @@ ipcMain.on('overlay:select', (e, data) => {
   // 範囲選択の画面で M キーを押すと、写す・写さないが設定と逆になる（data.cursor）
   const want = typeof data.cursor === 'boolean' ? data.cursor : !!settings.captureCursor
   cursorShapeFor(want ? pending : null, shot, x, y, w, h)
-    .then((shape) => captureDone(image, region, shape ? { shapes: [shape] } : undefined))
+    .then((shape) => captureDone(image, region, Object.assign({ swap: data.ctrl === true }, shape ? { shapes: [shape] } : {})))
 })
 
 // ---------------------------------------------------------------- 前回と同じ範囲で撮る
@@ -1589,6 +1589,7 @@ function delaySeconds() {
 // 自動ぼかし・クリップボードへのコピーは、どちらの場合も編集画面（出さないときは見えない窓）がやる
 // （描き方を main 側に真似て書くと、編集画面と見た目が食い違うため）。
 // opts.editor は「同じ範囲で撮り直す」から来たとき。編集画面から押したので、設定にかかわらず編集画面で開く
+// opts.swap は範囲選択で Ctrl を押しながら確定したとき。ふだん編集画面が出るなら自動コピーに、そうでなければ編集画面にする
 function captureDone(image, region, opts) {
   const meta = addToLibrary(image, region)
   // 撮った時点で置く図形（写したカーソル）。ふつうの図形なので、編集画面で動かす・消すができる
@@ -1596,7 +1597,10 @@ function captureDone(image, region, opts) {
     meta.shapes = opts.shapes
     writeMeta(meta)
   }
-  const quick = settings.quickClipboard === true && !(opts && opts.editor)
+  const opensEditor = settings.quickClipboard !== true && settings.afterCapture !== 'library'
+  const swap = !!(opts && opts.swap)
+  const editor = !!(opts && opts.editor) || (swap && !opensEditor)
+  const quick = !editor && (settings.quickClipboard === true || swap)
   const clip = quick ? 'image' : (CAPTURE_CLIPBOARDS.includes(settings.captureClipboard) ? settings.captureClipboard : 'image')
   const autoBlur = settings.autoBlur !== false
   // ファイルの場所だけなら絵を作る必要がないので、ここで入れてしまう
@@ -1605,7 +1609,7 @@ function captureDone(image, region, opts) {
   if (quick && meta) {
     tasks.noticeDisplay = regionDisplay(region) || screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
     runBackgroundEditor(image, meta, tasks)
-  } else if ((opts && opts.editor) || settings.afterCapture !== 'library' || !meta) {
+  } else if (editor || settings.afterCapture !== 'library' || !meta) {
     openEditor(image, meta, tasks)
   } else {
     showLibrary(true)

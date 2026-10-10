@@ -232,10 +232,11 @@ function colorText(c) { return colorHex ? hexOf(c) : c.join(', ') }
 
 // ---------------------------------------------------------------- 結果を返す
 
-function finish(rect) {
+// ctrl = Ctrl を押しながら確定した。撮った直後の動き（編集画面／自動コピー）を設定と入れ替える
+function finish(rect, ctrl) {
   if (done) return
   done = true
-  window.api.send('overlay:select', { displayId, rect, cursor: cursorOn })
+  window.api.send('overlay:select', { displayId, rect, cursor: cursorOn, ctrl: !!ctrl })
 }
 
 function cancel() {
@@ -310,11 +311,11 @@ window.addEventListener('pointerup', (e) => {
   // ほとんど動かさずに離した＝クリック。吸い付き枠があればそれを撮る
   if (r.w < 5 || r.h < 5) {
     const s = snapRect()
-    if (s) { finish({ x: s[0], y: s[1], w: s[2], h: s[3] }); return }
+    if (s) { finish({ x: s[0], y: s[1], w: s[2], h: s[3] }, e.ctrlKey); return }
     cancel()
     return
   }
-  finish(r)
+  finish(r, e.ctrlKey)
 })
 
 // ホイールで、部品 → もっと大きい部品 → 窓ぜんたい と広げる
@@ -344,7 +345,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'Space' && mode !== 'color') {
     e.preventDefault()
-    finish({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight })
+    finish({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }, e.ctrlKey)
   }
 })
 

@@ -77,7 +77,7 @@
 - 履歴パネルの選択は `click` ではなく `mousedown` で決める。ドラッグは押した時点で始まるので、`click` を待つと複数まとめてドラッグできない。すでに選んである札を押したときだけ `heldId` で `mouseup` まで待つ（押した瞬間に1枚へ絞ると、まとめて掴めなくなる）。
 - IMPORTANT: 履歴パネルの自動引っ込めは**カーソルの実位置**で決める（`cursorOverLibrary`）。`mouseleave` 頼みだと、カーソルが乗ったまま窓を隠したとき通知が来ず「乗っている」で固まり、二度と引っ込まない。
 - ドラッグのあいだはカーソルがパネルの外に出るので `libraryDragUntil` で先送りする。先送りは時間切れで必ず元に戻す（出しっぱなしを防ぐため）。
-- 履歴パネルを撮影後に出すのは、設定「撮った直後」が「開かずに履歴パネルに並べる」（`afterCapture: 'library'`）のときだけ。編集画面を開くときに出すと二重になる（`captureDone` / `addRecordingToLibrary`）。「同じ範囲で撮り直す」は編集画面から押すので、設定にかかわらず編集画面で開く（`captureRegion(region, { editor: true })`）。設定「自動コピーする」（`quickClipboard`）がオンなら `afterCapture` / `captureClipboard` より優先し、見えない編集画面でコピーして完了の窓（`showCaptureNotice`）を1秒出すだけ（撮り直しは除く）。
+- 履歴パネルを撮影後に出すのは、設定「撮った直後」が「開かずに履歴パネルに並べる」（`afterCapture: 'library'`）のときだけ。編集画面を開くときに出すと二重になる（`captureDone` / `addRecordingToLibrary`）。「同じ範囲で撮り直す」は編集画面から押すので、設定にかかわらず編集画面で開く（`captureRegion(region, { editor: true })`）。設定「自動コピーする」（`quickClipboard`）がオンなら `afterCapture` / `captureClipboard` より優先し、見えない編集画面でコピーして完了の窓（`showCaptureNotice`）を1秒出すだけ（撮り直しは除く）。範囲選択で Ctrl を押しながら確定すると `opts.swap` で編集画面⇔自動コピーを入れ替える（判定は `captureDone` の `opensEditor`）。
 - IMPORTANT: 撮った直後の「自動ぼかし → クリップボードへ」は編集画面の `afterOpen()` が順に行う。**コピーは自動ぼかしが済んでから**（先に入れると、ぼかす前の絵が貼られる）。編集画面を出さない設定では、見えない編集画面（`runBackgroundEditor`）が同じことをする。描き方を main 側に真似て書かない。
 - 見えない編集画面が動いている間に同じ履歴を開くときは、終わるのを待つ（`backgroundJobs`）。待たずに開くと両方が履歴へ書いて、自動ぼかしか手の書き込みのどちらかが消える。
 - 時間差のカウントダウンの窓は `focusable: false` ＋ `setIgnoreMouseEvents(true)`。フォーカスを取ると、待っている間に開いておいたメニューが閉じる（時間差で撮る意味がなくなる）。撮る前に壊して 160ms 待つ（写り込まないように）。
