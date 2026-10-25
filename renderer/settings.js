@@ -100,10 +100,10 @@ function accelFromEvent(e) {
   if (e.altKey) parts.push('Alt')
   if (e.shiftKey) parts.push('Shift')
   if (e.metaKey) parts.push('Super')
-  // 修飾キー無しで割り当てられるのはファンクションキーと PrintScreen だけ。
-  // 単独の文字キーを奪うと、どのアプリでも文字が打てなくなるため。
+  // 修飾キー無し（Shift だけも含む）で割り当てられるのはファンクションキーと PrintScreen だけ。
+  // 文字キーや Shift+文字を奪うと、どのアプリでもその文字（大文字）が打てなくなるため。
   const standalone = /^F([1-9]|1[0-9]|2[0-4])$/.test(k) || k === 'PrintScreen' || k === 'Pause'
-  if (!parts.length && !standalone) return null
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && !standalone) return null
   parts.push(k)
   return parts.join('+')
 }

@@ -4080,12 +4080,22 @@ function openSaveDir() {
 
 // ---------------------------------------------------------------- ホットキー
 
+// Ctrl / Alt / Win を含まないキー（Shift+Q など）は、どのアプリでもその文字が打てなくなるので登録しない。
+// 前の版の設定画面では Shift+文字を受け付けていたため、保存済みの設定もここで弾く
+function typingKey(accel) {
+  const parts = accel.split('+')
+  const key = parts[parts.length - 1]
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(key) || key === 'PrintScreen' || key === 'Pause') return false
+  return !parts.some((p) => /^(Ctrl|Control|CommandOrControl|CmdOrCtrl|Alt|Option|AltGr|Super|Meta|Cmd|Command)$/i.test(p))
+}
+
 // 登録できなかったものの一覧を返す（他のアプリに先に取られているとここに入る）
 function applyHotkeys() {
   globalShortcut.unregisterAll()
   const failed = []
   const reg = (accel, label, fn) => {
     if (!accel) return
+    if (typingKey(accel)) { failed.push({ label: label + '（Ctrl か Alt が必要）', accel }); return }
     let ok = false
     try { ok = globalShortcut.register(accel, fn) } catch (_) { ok = false }
     if (!ok) failed.push({ label, accel })
