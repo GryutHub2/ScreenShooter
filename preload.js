@@ -30,6 +30,7 @@ const SEND = [
 ]
 const INVOKE = [
   'app:save', 'app:savePiece', 'app:copy', 'app:copyCaptured', 'ocr:translate', 'app:openFolder', 'editor:findPrivate',
+  'editor:clipboardStamp', 'editor:clipboardImage',
   'settings:get', 'settings:save', 'settings:pickFolder',
   'library:list', 'library:rename', 'library:saveInfo', 'library:allTags',
   'record:store', 'record:save',

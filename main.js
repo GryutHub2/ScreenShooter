@@ -2647,6 +2647,24 @@ function copyImage(dataUrl) {
 
 ipcMain.handle('app:copy', (e, dataUrl) => copyImage(dataUrl))
 
+// 編集画面の Ctrl+V。画面側が控えた時点の印（stamp）と今のクリップボードの画像が同じなら、画面側の控えを使わせる（null を返す）。
+// 違えば、外でコピーした画像として渡す。Windows のクリップボードには「変わった回数」を読む口が Electron に無いので、中身の印で見分ける
+function clipboardStamp(img) {
+  if (img.isEmpty()) return ''
+  const s = img.getSize()
+  return s.width + 'x' + s.height + ':' + require('crypto').createHash('sha1').update(img.toBitmap()).digest('hex')
+}
+
+ipcMain.handle('editor:clipboardStamp', () => clipboardStamp(clipboard.readImage()))
+
+ipcMain.handle('editor:clipboardImage', (e, stamp) => {
+  const img = clipboard.readImage()
+  if (img.isEmpty()) return null
+  if (typeof stamp === 'string' && stamp === clipboardStamp(img)) return null
+  const s = img.getSize()
+  return { dataUrl: img.toDataURL(), w: s.width, h: s.height }
+})
+
 ipcMain.on('app:reveal', (e, filePath) => {
   if (filePath && fs.existsSync(filePath)) shell.showItemInFolder(filePath)
   else openSaveDir()

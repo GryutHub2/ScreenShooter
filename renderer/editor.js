@@ -96,6 +96,7 @@ let nextId = 1
 let pending = null       // 描いている最中の図形
 let pendingCrop = null   // 切り抜き中の枠
 let pendingCut = null    // 省略する帯を選んでいる最中（{ y1, y2 }）
+let region = null        // 選択の道具で囲んだ範囲（{ x1, y1, x2, y2 }）。Ctrl+C でここを画像として控える
 let drag = null
 let editingShape = null  // 文字を入力中の図形
 let editingIsNew = false
@@ -1111,6 +1112,20 @@ function drawCropOverlay(g, c) {
   g.restore()
 }
 
+// コピーする範囲。白黒の点線にして、明るい絵でも暗い絵でも見えるようにする
+function drawRegionOverlay(g, c) {
+  const r = norm(c)
+  const z = state.zoom
+  g.save()
+  g.lineWidth = 1.5 / z
+  g.strokeStyle = '#000'
+  g.strokeRect(r.x, r.y, r.w, r.h)
+  g.setLineDash([5 / z, 5 / z])
+  g.strokeStyle = '#fff'
+  g.strokeRect(r.x, r.y, r.w, r.h)
+  g.restore()
+}
+
 // 下の段に回す図形（見た目がほかの図形より下になるもの）
 const UNDER_TYPES = new Set(['marker', 'spot', 'zoom'])
 
@@ -1185,6 +1200,7 @@ function draw() {
   if (sel && !pending && !pendingCrop && !pendingCut) drawHandles(ctx, sel)
   if (pendingCrop) drawCropOverlay(ctx, pendingCrop)
   if (pendingCut) drawCutOverlay(ctx, pendingCut)
+  if (region) drawRegionOverlay(ctx, region)
   drawSnapGuides(ctx)
   syncHand(false)
 }
@@ -2261,6 +2277,14 @@ function applyResize(s, handle, p, orig) {
     if (handle.indexOf('n') >= 0) y1 = y2 - d; else y2 = y1 + d
   }
 
+  // 貼った画像は、角を引いたときだけ縦横比を保つ（辺を引けばその向きだけ伸び縮みする）
+  if (s.type === 'image' && handle.length === 2) {
+    const o = norm(orig)
+    const k = Math.max(4 / Math.min(o.w, o.h), Math.abs(x2 - x1) / o.w, Math.abs(y2 - y1) / o.h)
+    if (handle.indexOf('w') >= 0) x1 = x2 - o.w * k; else x2 = x1 + o.w * k
+    if (handle.indexOf('n') >= 0) y1 = y2 - o.h * k; else y2 = y1 + o.h * k
+  }
+
   // 鉛筆・蛍光ペンは枠だけ動かしても線は動かないので、元の枠と新しい枠の比で点をまとめて伸ばす
   if ((s.type === 'pen' || s.type === 'marker') && orig.points && orig.points.length) {
     const o = norm(orig)
@@ -2287,18 +2311,69 @@ const PASTE_GAP = 20
 
 let clipShape = null  // Ctrl+C で控えた図形（画面の外のクリップボードとは別物）
 let clipStep = 0      // 続けて貼ったときに階段状にずらすための回数
+let clipStamp = null  // 控えた時点のクリップボードの中身の印（Promise）。paste() で外の画像と見分ける
 
 function copyShape() {
   const s = byId(state.selectedId)
   if (!s) return false
   clipShape = JSON.parse(JSON.stringify(s))
   clipStep = 0
+  clipStamp = window.api.invoke('editor:clipboardStamp')
   toast('図形をコピーしました（Ctrl+V で貼り付け）')
   return true
 }
 
+// 囲んだ範囲を、見えているとおり（絵＋書き込み）に画像の図形として控える。
+// 外のアプリにも貼れるよう、Windows のクリップボードにも入れる
+function copyRegion() {
+  if (!region) return false
+  const r = norm(region)
+  const c = document.createElement('canvas')
+  c.width = Math.max(1, Math.round(r.w))
+  c.height = Math.max(1, Math.round(r.h))
+  const g = c.getContext('2d')
+  g.imageSmoothingQuality = 'high'
+  g.setTransform(1, 0, 0, 1, -r.x, -r.y)
+  paintScene(g)
+  const src = c.toDataURL('image/png')
+  clipShape = { type: 'image', color: '#000000', width: 0, fontSize: 28, src, x1: r.x, y1: r.y, x2: r.x + r.w, y2: r.y + r.h }
+  clipStep = 0
+  clipStamp = window.api.invoke('app:copy', src).then(() => window.api.invoke('editor:clipboardStamp'))
+  toast('範囲をコピーしました（Ctrl+V で絵の上に貼り付け）')
+  return true
+}
+
+// Ctrl+V。この画面で控えたあとに外で画像をコピーしていたら、そちらを貼る。
+// 見分けは、控えた時点のクリップボードの中身（clipStamp）と今の中身が同じかどうか
+async function paste() {
+  const stamp = clipShape ? await clipStamp : null
+  const res = await window.api.invoke('editor:clipboardImage', stamp)
+  if (res && res.dataUrl) return pasteImage(res.dataUrl, res.w, res.h)
+  if (pasteShape()) return
+  toast('貼り付けるものがありません（範囲を囲んで Ctrl+C するか、画像をコピーしてから）')
+}
+
+// 外でコピーした画像は、見えている範囲の真ん中に置く。大きすぎるときは切り抜き範囲に収まるまで縮める
+function pasteImage(src, w, h) {
+  const c = state.crop
+  const k = Math.min(1, (c.w * 0.9) / w, (c.h * 0.9) / h)
+  const pw = Math.max(1, Math.round(w * k)), ph = Math.max(1, Math.round(h * k))
+  const x = Math.round(c.x + (c.w - pw) / 2), y = Math.round(c.y + (c.h - ph) / 2)
+  const s = { id: nextId++, type: 'image', color: '#000000', width: 0, fontSize: 28, src, x1: x, y1: y, x2: x + pw, y2: y + ph }
+  imageOf(src)
+  const before = beginChange()
+  state.shapes.push(s)
+  state.selectedId = s.id
+  region = null
+  if (state.tool !== 'select') setTool('select')
+  commitChange(before)
+  updateUi()
+  draw()
+}
+
 function pasteShape() {
   if (!clipShape) return false
+  region = null
   clipStep++
   const s = JSON.parse(JSON.stringify(clipShape))
   s.id = nextId++
@@ -2455,6 +2530,7 @@ function canvasDown(e) {
   const p = toImg(e)
   try { cv.setPointerCapture(e.pointerId) } catch (_) {}
   freezeView()
+  region = null
 
   // すでに置いたものの上なら、どの道具を持っていても掴む（動かす・大きさを変える）。
   // 中身を直したいときはダブルクリック。切り抜き・省略は範囲を取る操作なので、ここは素通しする。
@@ -2477,9 +2553,11 @@ function canvasDown(e) {
       draw()
       return
     }
-    // 何も無い所を押したとき。選択の道具なら選択を外すだけで終わり
+    // 何も無い所を押したとき。選択の道具なら選択を外し、ドラッグすればコピーする範囲を囲む（endDrag）
     if (state.tool === 'select') {
       state.selectedId = null
+      region = { x1: p.x, y1: p.y, x2: p.x, y2: p.y }
+      drag = { mode: 'region' }
       updateUi()
       draw()
       return
@@ -2598,6 +2676,9 @@ cv.addEventListener('pointermove', (e) => {
     pendingCrop.y2 = p.y
   } else if (drag.mode === 'cut' && pendingCut) {
     pendingCut.y2 = p.y
+  } else if (drag.mode === 'region' && region) {
+    region.x2 = p.x
+    region.y2 = p.y
   } else if (drag.mode === 'move') {
     const s = byId(drag.id)
     if (s) {
@@ -2769,6 +2850,14 @@ function endDrag() {
     }
     pending = null
     commitChange(snap)
+  } else if (mode === 'region' && region) {
+    // 見えている範囲（view）の外は描けないので、そこに収める。クリックだけなら範囲を外す
+    const r = norm(region)
+    const v = view()
+    const x1 = Math.max(v.x, Math.round(r.x)), y1 = Math.max(v.y, Math.round(r.y))
+    const x2 = Math.min(v.x + v.w, Math.round(r.x + r.w)), y2 = Math.min(v.y + v.h, Math.round(r.y + r.h))
+    // 囲んだ直後にトーストは出さない（下の真ん中に出て、続けて囲み直すドラッグを横取りするため）
+    region = (x2 - x1) * state.zoom > 4 && (y2 - y1) * state.zoom > 4 ? { x1, y1, x2, y2 } : null
   } else if (mode === 'cut' && pendingCut) {
     const c = pendingCut
     pendingCut = null
@@ -2830,6 +2919,7 @@ function setTool(tool) {
   if (tool === 'hand' && state.tool !== 'hand') handBackTool = state.tool
   state.tool = tool
   if (tool !== 'select' && tool !== 'hand') state.selectedId = null
+  if (tool !== 'select') region = null
   cv.classList.toggle('select', tool === 'select')
   wrap.classList.toggle('select', tool === 'select')
   wrap.classList.toggle('hand', tool === 'hand')
@@ -3460,8 +3550,8 @@ window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase()
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
     if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); return }
-    if (k === 'c') { e.preventDefault(); if (!copyShape()) doCopy(); return }
-    if (k === 'v') { e.preventDefault(); pasteShape(); return }
+    if (k === 'c') { e.preventDefault(); if (!copyShape() && !copyRegion()) doCopy(); return }
+    if (k === 'v') { e.preventDefault(); paste(); return }
     if (k === 's') { e.preventDefault(); doSave(false); return }
     if (k === '0') { e.preventDefault(); setZoom(1, false); return }
     if (k === '9') { e.preventDefault(); setZoom(1, true); return }
@@ -3491,7 +3581,8 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     e.preventDefault()
     if (hideFinishPreview()) return
-    if (state.selectedId) { state.selectedId = null; updateUi(); draw() }
+    if (region) { region = null; draw() }
+    else if (state.selectedId) { state.selectedId = null; updateUi(); draw() }
     else if (state.focus) toggleFocus()
     else requestClose()
     return
